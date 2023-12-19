@@ -25,12 +25,7 @@ wind_speed_adjust <- c(nakatomi = 2, wayne_manor = 0, budapest = -2)
 # bldgs being in different areas of the city
 temp_adjust <- c(nakatomi = 3, wayne_manor = 0, budapest = -3)
 # no adjust to cloud_cover; it's all the same grey everywhere in Seattle :)
-# number of people
-mean_factor_weekday <- c(nakatomi = 60, wayne_manor = -200, budapest = 0)
-mean_factor_weekend <- c(nakatomi = 150, wayne_manor = -40, budapest = 0)
-scale_factor_weekday <- c(nakatomi = 0, wayne_manor = -1, budapest = 1)
-scale_factor_weekend <- c(nakatomi = 0, wayne_manor = -1, budapest = 1)
-sd_factor_adjust <- c(nakatomi = 20, wayne_manor = -10, budapest = 2)
+# number of people - in the num_ppl section
 
 
 bldg_names <- rep(buildings, each = days)
@@ -42,30 +37,75 @@ ids <- seq_len(days * length(buildings))
 #### BUILDING FOOTPRINT ##################### 
 # (assume units: sq ft) (assuming they remain constant over the time period for simplicity)
 # bldg_area <- round(runif(length(buildings), min = 5000, max = 25000)) # if you want to scramble bldg_size each run
-bldg_area <- c(21110, 7260, 15200)
+bldg_area <- c(21110, 7260, 15200) # nakatomi, wayne_manor, budapest
 bldg_area_rep <- rep(bldg_area, each = days)
 
 #### NUMBER OF PEOPLE #####################
 # number of people in each building, with reduced occupants on weekends and customized to each building
-num_ppl <- numeric(length = days * length(buildings))
-for (i in 1:(days * length(buildings))) {
-  building_name <- bldg_names[i]
-  if (weekdays[i] == 1) {
-    # Generate more people on weekdays
-    mean_factor <- 300 + mean_factor_weekday[building_name]
-    scale_factor <- 5 + scale_factor_weekday[building_name]
-    sd_factor <- 20 + sd_factor_adjust[building_name]   
-  } else {
-    # Generate fewer people on weekends
-    mean_factor <- 70 + mean_factor_weekend[building_name]
-    scale_factor <- 5 + scale_factor_weekend[building_name]
-    sd_factor <- 10 + sd_factor_adjust[building_name]   
+# num_ppl <- numeric(length = days * length(buildings))
+# for (i in 1:(days * length(buildings))) {
+#   building_name <- bldg_names[i]
+#   if (weekdays[i] == 1) {
+#     # Generate more people on weekdays
+#     mean_factor <- 300 + mean_factor_weekday[building_name]
+#     scale_factor <- 5 + scale_factor_weekday[building_name]
+#     sd_factor <- 70 + sd_factor_adjust[building_name]   
+#   } else {
+#     # Generate fewer people on weekends
+#     mean_factor <- 100 + mean_factor_weekend[building_name]
+#     scale_factor <- 5 + scale_factor_weekend[building_name]
+#     sd_factor <- 30 + sd_factor_adjust[building_name]   
+#   }
+#   
+#   num_ppl[i] <- as.integer(pmax(0, pmin(2000, rgamma(1, shape = 2, scale = scale_factor) + 1 +
+#                                           abs(round(rnorm(1, mean = mean_factor, sd = sd_factor), 0)))))
+# }
+# plot(num_ppl)
+# 
+# sqft_per_person <- numeric(length = length(num_ppl))
+# 
+# # Loop through the num_ppl array
+# for (i in 1:length(num_ppl)) {
+#   if (num_ppl[i] > 0) {
+#     sqft_per_person[i] <- bldg_area_rep[i] / num_ppl[i]
+#   } else {
+#     sqft_per_person[i] <- NA  # Assign NA (or a large number) when there are no people
+#   }
+# }
+# 
+# plot(sqft_per_person)  # Plot the square feet per person
+
+generate_building_data <- function(building_name, days, weekdays, mean_factor_weekday, mean_factor_weekend,
+                                   scale_factor_weekday, scale_factor_weekend, sd_factor_adjust, bldg_area) {
+  num_ppl <- numeric(length = days)
+  sqft_per_person <- numeric(length = days)
+  
+  for (i in 1:length(days)) {
+    if (weekdays[i] == 1) {  # Weekday
+      mean_factor <- 300 + mean_factor_weekday[building_name]
+      scale_factor <- 5 + scale_factor_weekday[building_name]
+      sd_factor <- 70 + sd_factor_adjust[building_name]
+    } else {  # Weekend
+      mean_factor <- 100 + mean_factor_weekend[building_name]
+      scale_factor <- 5 + scale_factor_weekend[building_name]
+      sd_factor <- 30 + sd_factor_adjust[building_name]
+    }
+    
+    num_people <- as.integer(pmax(0, pmin(2000, rgamma(1, shape = 2, scale = scale_factor) + 1 +
+                                            abs(round(rnorm(1, mean = mean_factor, sd = sd_factor), 0)))))
+    sqft_per_person[i] <- if (num_people > 0) bldg_area / num_people else NA
   }
   
-  num_ppl[i] <- as.integer(pmax(0, pmin(500, rgamma(1, shape = 2, scale = scale_factor) + 1 +
-                                          abs(round(rnorm(1, mean = mean_factor, sd = sd_factor), 0)))))
+  data.frame(date = days, building = building_name, num_ppl = num_ppl, sqft_per_person = sqft_per_person)
 }
-plot(num_ppl)
+
+# Example usage:
+# Assuming 'days' and 'weekdays' are predefined vectors
+combined_data <- do.call(rbind, lapply(buildings, function(building) {
+  generate_building_data(building, days, weekdays, mean_factor_weekday, mean_factor_weekend,
+                         scale_factor_weekday, scale_factor_weekend, sd_factor_adjust, bldg_area[building])
+}))
+
 
 #### /x/INSULATION QUALITY #####################
 #### removing for now
