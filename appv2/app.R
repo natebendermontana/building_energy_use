@@ -634,6 +634,10 @@ server <- function(input, output, session) {
                 "Number of People"
               }
               
+              day_type_colors <- c("Weekday" = "#264165", "Weekend" = "#10adc6")
+              available_day_types <- unique(plot_df$day_type)
+              colors_to_use <- day_type_colors[available_day_types]
+              
               ggplot(plot_df, aes(x = date, y = !!sym(input$variable), color = day_type)) +
                 geom_line() +
                 labs(x = "Date", y = y_axis_label, color = "Day Type") +
@@ -641,10 +645,11 @@ server <- function(input, output, session) {
                 theme(axis.title = element_text(size = 15),  
                       axis.text = element_text(size = 13),   
                       legend.title = element_text(size = 15),
-                      legend.text = element_text(size = 13))
+                      legend.text = element_text(size = 13))+
+                    scale_color_manual(values = colors_to_use)
             } else {
                 ggplot(plot_df, aes_string(x = "date", y = input$variable)) +
-                  geom_line(color = "#155974", alpha = .8) +  # Set specific color for lines
+                  geom_line(color = "#373737", alpha = .8) +  # Set specific color for lines
                   labs(x = "Date", y = selected_var) +
                   theme_minimal() +
                   theme(axis.title = element_text(size = 15),  
