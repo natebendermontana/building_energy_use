@@ -7,6 +7,7 @@ library(GGally)
 library(here)
 library(reshape2)
 library(dplyr)
+library(Hmisc)
 
 # Set a seed for reproducibility
 set.seed(12923)
@@ -30,8 +31,8 @@ temp_adjust <- c(nakatomi = 3, wayne_manor = 0, budapest = -3)
 
 bldg_names <- rep(buildings, each = days)
 dates_rep <- rep(dates, times = length(buildings))
-weekdays <- ifelse(wday(dates_rep) %in% c(1, 7), 0, 1) # 0 for weekend, 1 for weekday
-weekdays_singlebldg <- ifelse(wday(dates) %in% c(1, 7), 0, 1) # 0 for weekend, 1 for weekday
+weekdays <- ifelse(wday(dates_rep, week_start = 1) %in% c(6, 7), 0, 1) # 0 for weekend, 1 for weekday, with Mon being the first day of the week
+weekdays_singlebldg <- ifelse(wday(dates, week_start = 1) %in% c(6, 7), 0, 1) # 0 for weekend, 1 for weekday, with Mon being the first day of the week
 
 # Unique ID for each row
 ids <- seq_len(days * length(buildings))
@@ -78,11 +79,13 @@ bldg_area_rep <- rep(bldg_area, each = days)
 # 
 # plot(sqft_per_person)  # Plot the square feet per person
 
-mean_factor_weekday <- c(nakatomi = 60, wayne_manor = -150, budapest = -8)
-mean_factor_weekend <- c(nakatomi = 150, wayne_manor = -30, budapest = -8)
-scale_factor_weekday <- c(nakatomi = 0, wayne_manor = -1, budapest = 1)
+mean_factor_weekday <- c(nakatomi = 80, wayne_manor = -150, budapest = -7)
+mean_factor_weekend <- c(nakatomi = 170, wayne_manor = 50, budapest = 10)
+scale_factor_weekday <- c(nakatomi = 1, wayne_manor = -1, budapest = 1)
 scale_factor_weekend <- c(nakatomi = 0, wayne_manor = -1, budapest = 1)
-sd_factor_adjust <- c(nakatomi = 20, wayne_manor = -10, budapest = 0)
+sd_factor_weekday <- c(nakatomi = 10, wayne_manor = -69, budapest = -7)
+sd_factor_weekend <- c(nakatomi = 10, wayne_manor = -29, budapest = -7)
+
 
 generate_num_ppl <- function(building_name, dates, weekdays_singlebldg, mean_factor_weekday, mean_factor_weekend,
                              scale_factor_weekday, scale_factor_weekend, sd_factor_adjust, bldg_area_named) {
@@ -94,15 +97,21 @@ generate_num_ppl <- function(building_name, dates, weekdays_singlebldg, mean_fac
     if (weekdays_singlebldg[i] == 1) {  # Weekday
       mean_factor <- 300 + mean_factor_weekday[building_name]
       scale_factor <- 5 + scale_factor_weekday[building_name]
-      sd_factor <- 70 + sd_factor_adjust[building_name]
+      sd_factor <- 70 + sd_factor_weekday[building_name]
     } else {  # Weekend
       mean_factor <- 100 + mean_factor_weekend[building_name]
       scale_factor <- 5 + scale_factor_weekend[building_name]
-      sd_factor <- 30 + sd_factor_adjust[building_name]
+      sd_factor <- 30 + sd_factor_weekend[building_name]
     }
     
     num_ppl_raw[i] <- as.integer(pmax(0, pmin(2000, rgamma(1, shape = 2, scale = scale_factor) + 1 +
                                                 abs(round(rnorm(1, mean = mean_factor, sd = sd_factor), 0)))))
+    
+    # Apply capping based on quantiles
+#    u_limit <- quantile(uncapped_value, 0.95)  # 95th percentile as upper limit
+#    l_limit <- quantile(uncapped_value, 0.05)  # 5th percentile as lower limit
+#    num_ppl_raw[i] <- pmin(u_limit, pmax(l_limit, uncapped_value))
+    
     sqft_per_person[i] <- if (num_ppl_raw[i] > 0) bldg_area_named[building_name] / num_ppl_raw[i] else NA
   }
   
@@ -116,18 +125,31 @@ overall_ppl <- do.call(rbind, lapply(buildings, function(building_name) {
                    scale_factor_weekday, scale_factor_weekend, sd_factor_adjust, bldg_area_named)}))
 
 # check distributions if needed
-# overall_ppl %>% 
-#   filter(building == "budapest") %>% 
-#     ggplot(aes(x = date, y = sqft_per_person, color = factor(weekdays))) +
+# overall_ppl %>%
+#   filter(bldg_name == "wayne_manor") %>%
+#     ggplot(aes(x = date, y = num_ppl_raw, color = factor(weekdays))) + # 1=weekday, 0=weekend
 #     geom_point() +  # Scatter plot
-#     labs(title = "Square Feet Per Person - Nakatomi",
+#     labs(title = "num people",
 #          x = "Date",
-#          y = "Square Feet Per Person",
+#          y = "num people",
 #          color = "Day Type") +
-#     scale_color_manual(values = c("blue", "red"), 
-#                        labels = c("Weekday", "Weekend")) +
+#     # scale_color_manual(values = c("blue", "red"),
+#     #                    labels = c("Weekend", "Weekday")) +
 #     theme_minimal()
-
+# 
+# describe(overall_ppl$num_ppl_raw)
+#   
+# overall_ppl %>%
+#   filter(bldg_name == "wayne_manor") %>%
+#   ggplot(aes(x = date, y = sqft_per_person, color = factor(weekdays))) +
+#   geom_point() +  # Scatter plot
+#   labs(title = "sqft_per_person",
+#        x = "Date",
+#        y = "sqft_per_person",
+#        color = "Day Type") +
+#   # scale_color_manual(values = c("blue", "red"),
+#   #                    labels = c("Weekend", "Weekday")) +
+#   theme_minimal()
 
 #### /x/INSULATION QUALITY #####################
 #### removing for now
@@ -377,22 +399,21 @@ df <- tibble(
 overall_ppl <- overall_ppl[, c("date", "bldg_name", "num_ppl_raw", "sqft_per_person")]
 df <- merge(df, overall_ppl, by = c("date", "bldg_name"), all.x = TRUE)
 
-
 df <- merge(df, efficiency_long[, c("date", "bldg_name", "equip_efficiency")], by = c("date", "bldg_name"))
 df <- merge(df, hvac_long[, c("date", "bldg_name", "hvac_efficiency")], by = c("date", "bldg_name"))
 
 
-ggplot(df, aes(x = date, y = wind_speed, color = bldg_name)) + 
-  geom_line(alpha=.5) +
-  labs(title = "Wind Speed by Building", x = "Date", y = "Wind Speed (mph)") +
-  theme_minimal() +
-  scale_color_brewer(palette = "Set1") # Use a color palette that is distinct and clear
-
-ggplot(df, aes(x = date, y = cloud_cover)) + 
-  geom_line(alpha=.5) +
-  labs(title = "Cloud cover", x = "Date", y = "cloud cover (%)") +
-  theme_minimal() +
-  scale_color_brewer(palette = "Set1") # Use a color palette that is distinct and clear
+# ggplot(df, aes(x = date, y = wind_speed, color = bldg_name)) + 
+#   geom_line(alpha=.5) +
+#   labs(title = "Wind Speed by Building", x = "Date", y = "Wind Speed (mph)") +
+#   theme_minimal() +
+#   scale_color_brewer(palette = "Set1") # Use a color palette that is distinct and clear
+# 
+# ggplot(df, aes(x = date, y = cloud_cover)) + 
+#   geom_line(alpha=.5) +
+#   labs(title = "Cloud cover", x = "Date", y = "cloud cover (%)") +
+#   theme_minimal() +
+#   scale_color_brewer(palette = "Set1") # Use a color palette that is distinct and clear
 
 # double check HVAC types
 # ggplot(df, aes(x = insulation, y = hvac, color = hvac_type)) +
@@ -432,36 +453,36 @@ df <- df %>%
 # fix the col order
 df <- df %>%
   select(
-    date, bldg_name, id, bldg_area, year, month, day, weekday,
+    date, bldg_name, id, bldg_area, year, month, day, weekday, num_ppl_raw,
     sqft_per_person, temp, wind_speed, cloud_cover, equip_efficiency,
     hvac_efficiency, total
   )
 
 #### FINAL CHECKS #####################
 # Create an index vector for variable order
-var_order <- c("bldg_area", "sqft_per_person", "equip_efficiency", 
+var_order <- c("bldg_area", "num_ppl_raw", "sqft_per_person", "equip_efficiency", 
                "hvac_efficiency", "temp", "wind_speed", 
                "cloud_cover", "total")
 col_indices <- match(var_order, names(df))
 
 # Display parallel coordinates plot grouped by "hvac_type"
-ggparcoord(data = df,
-           columns = col_indices,
-           alphaLines = 0.1,
-           groupColumn = "bldg_name") + 
-  scale_color_manual(values = c("nakatomi" = "#20639b", "wayne_manor" = "grey", "budapest" = "grey"))
-
-ggparcoord(data = df,
-           columns = col_indices,
-           alphaLines = 0.1,
-           groupColumn = "bldg_name") + 
-  scale_color_manual(values = c("nakatomi" = "grey", "wayne_manor" = "#20639b", "budapest" = "grey"))
-
-ggparcoord(data = df,
-           columns = col_indices,
-           alphaLines = 0.1,
-           groupColumn = "bldg_name") + 
-  scale_color_manual(values = c("nakatomi" = "grey", "wayne_manor" = "grey", "budapest" = "#20639b"))
+# ggparcoord(data = df,
+#            columns = col_indices,
+#            alphaLines = 0.1,
+#            groupColumn = "bldg_name") + 
+#   scale_color_manual(values = c("nakatomi" = "#20639b", "wayne_manor" = "grey", "budapest" = "grey"))
+# 
+# ggparcoord(data = df,
+#            columns = col_indices,
+#            alphaLines = 0.1,
+#            groupColumn = "bldg_name") + 
+#   scale_color_manual(values = c("nakatomi" = "grey", "wayne_manor" = "#20639b", "budapest" = "grey"))
+# 
+# ggparcoord(data = df,
+#            columns = col_indices,
+#            alphaLines = 0.1,
+#            groupColumn = "bldg_name") + 
+#   scale_color_manual(values = c("nakatomi" = "grey", "wayne_manor" = "grey", "budapest" = "#20639b"))
 
 
 
