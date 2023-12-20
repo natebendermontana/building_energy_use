@@ -40,42 +40,41 @@ potential_forecast_window_end <- forecast_static_min + potential_forecast_window
 # ************************************************************
 # Func: Num People ###########################################
 # ************************************************************
-# building-specific adjustments to the num_ppl distributions
 
-########################################################################################################################################################
-########################################################################################################################################################
-########################################################################################################################################################
-# START HERE
-# need to update "num_ppl" throughout this app with "sqft_per_person"...including this "generate_num_ppl" function. 
-########################################################################################################################################################
-########################################################################################################################################################
-########################################################################################################################################################
-
-generate_num_ppl <- function(pred_building, total_dates, potential_total_length, mean_factor_weekday, mean_factor_weekend,
-                             scale_factor_weekday, scale_factor_weekend, sd_factor_adjust, useradjust_num_ppl) {
+generate_sqft_per_person <- function(df, pred_building, total_dates, potential_total_length, mean_factor_weekday, mean_factor_weekend,
+                             scale_factor_weekday, scale_factor_weekend, sd_factor_weekday, sd_factor_weekend, useradjust_sqft_per_person) {
     
-    weekdays <- ifelse(lubridate::wday(total_dates) %in% c(1, 7), 0, 1) # 0 for weekend, 1 for weekday
-    num_ppl <- numeric(length = potential_total_length)
-    pcnt_adjustment = 1 + (useradjust_num_ppl / 100)
+  pred_bldg_area <- df %>% 
+    filter(bldg_name == pred_building) %>% 
+    summarise(bldg_area = first(bldg_area)) %>% 
+    pull(bldg_area)
+  
+  weekdays <- ifelse(lubridate::wday(total_dates) %in% c(1, 7), 0, 1) # 0 for weekend, 1 for weekday
+  num_ppl_raw <- numeric(length = potential_total_length)
+  sqft_per_person <- numeric(length = potential_total_length)
+  pcnt_adjustment = 1 + (useradjust_sqft_per_person / 100)
     
     for (i in 1:(potential_total_length)) {
         if (weekdays[i] == 1) {
             # Generate more people on weekdays
             mean_factor <- 300 + mean_factor_weekday[pred_building]*pcnt_adjustment
             scale_factor <- 5 + scale_factor_weekday[pred_building]
-            sd_factor <- 20 + sd_factor_adjust[pred_building]   
+            sd_factor <- 20 + sd_factor_weekday[pred_building]   
         } else {
             # Generate fewer people on weekends
             mean_factor <- 70 + mean_factor_weekend[pred_building]*pcnt_adjustment
             scale_factor <- 5 + scale_factor_weekend[pred_building]
-            sd_factor <- 10 + sd_factor_adjust[pred_building]   
+            sd_factor <- 10 + sd_factor_weekend[pred_building]   
         }
         
-        num_ppl[i] <- as.integer(pmax(0, pmin(500, rgamma(1, shape = 2, scale = scale_factor) + 1 +
+      num_ppl_raw[i] <- as.integer(pmax(0, pmin(500, rgamma(1, shape = 2, scale = scale_factor) + 1 +
                                                   abs(round(rnorm(1, mean = mean_factor, sd = sd_factor), 0)))))
+        
+      sqft_per_person[i] <- if (num_ppl_raw[i] > 0) pred_bldg_area / num_ppl_raw[i] else NA
+        
     }
     
-    return(num_ppl)
+    return(sqft_per_person)
 }
 
 # ************************************************************
@@ -184,11 +183,8 @@ add_future_regressor <- function(df, future_df, pred_building, variable_name, fu
 
 # UI ##########################
 
-
-  
-ui <- #shinyUI(
+ui <- shinyUI(
     fluidPage(
-#      shinythemes::themeSelector(),  # <--- Add this somewhere in the UI
       useShinyjs(),
         introjsUI(),
         tags$head(
@@ -240,6 +236,10 @@ dashboardPage(
         )
     ),
     dashboardBody(
+      tags$style(
+        type = 'text/css', 
+        '.bg-black {background-color: #575757!important; }'
+      ),
       tags$style(HTML(
         ".skin-blue .main-header .logo:hover {font-weight: bold; background-color: #155974; color: #ffffff}
    .skin-blue .main-header .logo {font-weight: bold; background-color: #155974; color: #ffffff}
@@ -286,7 +286,7 @@ dashboardPage(
                             fluidRow(
                                 column(6,
                                        introBox(
-                                           selectInput("eda_building", "Choose Building",
+                                           selectInput("eda_building", "Building",
                                                        choices = c("Grand Budapest Hotel" = "budapest",
                                                                    "Nakatomi Plaza" = "nakatomi",
                                                                    "Wayne Manor" = "wayne_manor")),
@@ -296,15 +296,16 @@ dashboardPage(
                                 ),
                                 column(6,
                                        introBox(
-                                           selectInput("variable", "Choose Variable",
-                                                       choices = c("Number of People" = "num_ppl",
+                                           selectInput("variable", "Variable",
+                                                       choices = c("Square Feet Per Person" = "sqft_per_person",
+                                                                   "Number of People" = "num_ppl_raw",
                                                                    "Temperature (F)" = "temp",
                                                                    "Wind Speed (mph)" = "wind_speed",
                                                                    "Cloud Cover (%)" = "cloud_cover",
                                                                    "Equipment Efficiency Rating" = "equip_efficiency",
                                                                    "HVAC Efficiency Rating" = "hvac_efficiency",
                                                                    "Building Size" = "bldg_area",
-                                                                   "Total" = "total")),
+                                                                   "Total Energy Use (KWh)" = "total")),
                                            data.step = 5,
                                            data.intro = "Here in the EDA Plots tab, you can choose a variable to see how it's been simulated for a particular building."
                                        )
@@ -313,7 +314,7 @@ dashboardPage(
                             fluidRow(
                                 column(12,
                                        introBox(
-                                           sliderInput("time_period", "Select Time Period",
+                                           sliderInput("time_period", "Time Period",
                                                        min = min(df$date),
                                                        max = max(df$date),
                                                        value = c(min(df$date), max(df$date)),
@@ -323,7 +324,14 @@ dashboardPage(
                                            data.intro = "Zoom in or out to a particular time frame."
                                        )
                                 )
-                            )
+                            ),
+                            fluidRow(column(6, uiOutput("day_type_selector"))),
+
+                        ),
+                        fluidRow(
+                          column(4, uiOutput("box_avg")),
+                          column(4, uiOutput("box_min")),
+                          column(4, uiOutput("box_max"))
                         ),
                         introBox(
                             box(shinycssloaders::withSpinner(plotOutput("edaPlot")), width=12),
@@ -339,7 +347,7 @@ dashboardPage(
                             fluidRow(
                                 column(4,
                                        introBox(
-                                           selectInput("scenario_building", "Choose Building",
+                                           selectInput("scenario_building", "Building",
                                                        choices = c("Grand Budapest Hotel" = "budapest",
                                                                    "Nakatomi Plaza" = "nakatomi",
                                                                    "Wayne Manor" = "wayne_manor")),
@@ -366,11 +374,11 @@ dashboardPage(
                             fluidRow(
                                 column(4,
                                        introBox(
-                                           sliderInput("useradjust_num_ppl", "Percent adjustment: Number of People",
+                                           sliderInput("useradjust_sqft_per_person", "Percent adjustment: Square Feet Per Person",
                                                        min = -100, max = 100, value = 0, post = "%"),
                                            data.step = 10,
                                            data.intro = "Do you expect more or fewer people in this building in the future? This slider adjusts the *distribution* of people upwards or downwards by a percentage.
-                              <br><br> For instance, setting the slider to 30% means that the future energy use predictions will be based on the historical patterns of occupancy shifted upwards by 30%."
+                              <br><br> But remember, it's inverted — more sqft per person means the building is less densely occupied. For instance, setting the slider to 30% means that the future energy predictions will be based on the historical patterns of square footage per person shifted upwards by 30%."
                                        )
                                 ),
                               column(4,
@@ -409,7 +417,7 @@ dashboardPage(
     )
 )
 )
-#)
+)
 
 
 # Server ####
@@ -457,14 +465,140 @@ server <- function(input, output, session) {
                                "wayne_manor" = "Wayne Manor")
     
     pretty_variable_names <- c("bldg_area" = "Building Area (sqft)",
-                               "num_ppl" = "Number of People", 
+                               "sqft_per_person" = "Square Feet Per Person",
+                               "num_ppl_raw" = "Number of People",
                                "temp" = "Temperature (F)", 
                                "wind_speed" = "Wind Speed (mph)", 
                                "cloud_cover" = "Cloud Cover (%)", 
                                "equip_efficiency" = "Equipment Efficiency Rating", 
                                "hvac_efficiency" = "HVAC Efficiency Rating", 
-                               "total" = "Total")
+                               "total" = "Total Energy Use (KWh)")
     
+    # Reactive expression for summary stats boxes
+    summaryboxes_filter <- reactive({
+      start_date <- as.Date(input$time_period[1], origin="1970-01-01")
+      end_date <- as.Date(input$time_period[2], origin="1970-01-01")
+      
+      summaryboxes_df <- df %>% 
+        filter(bldg_name == input$eda_building, date >= start_date & date <= end_date) %>% 
+        select(date, bldg_name, !!sym(input$variable), weekday)
+      
+      if (!is.null(input$day_type) && input$variable %in% c("sqft_per_person", "num_ppl_raw")) {
+        if(input$day_type == "weekdays") {
+          summaryboxes_df <- summaryboxes_df %>% filter(weekday == 1)
+        } else if(input$day_type == "weekends") {
+          summaryboxes_df <- summaryboxes_df %>% filter(weekday == 0)
+        }
+      }
+      
+      return(summaryboxes_df)
+    })
+    
+      
+    # Function to calculate percentage change
+    calc_pct_chng <- function(current_value, overall_value) {
+      if (overall_value == 0 || is.na(current_value) || is.na(overall_value)) {
+        return(NA)
+      } else {
+        return((current_value - overall_value) / overall_value * 100)
+      }
+    }
+      
+    # Mean Box
+    output$box_avg <- renderUI({
+      current_mean <- mean(summaryboxes_filter()[[input$variable]], na.rm = TRUE)
+      overall_mean <- mean(df[[input$variable]], na.rm = TRUE)
+      pct_change <- calc_pct_chng(current_mean, overall_mean)
+      
+      #color <- ifelse(pct_change >= 0, "green", "red")
+      pct_change_text <- paste0(formatC(pct_change, format = "f", digits = 1), "%")
+      
+      # Determine icon and color based on pct_change
+      icon_color_up <- "#00cb21"  # A custom green color (you can use hex codes)
+      icon_color_down <- "#ff6969"  # A custom red color
+      icon_color_equal <- "#bababa"  # A custom blue color for 'equals'
+      
+      icon_name <- ifelse(pct_change > 0, "chevron-up", ifelse(pct_change < 0, "chevron-down", "equals"))
+      icon_color <- ifelse(pct_change > 0, icon_color_up, ifelse(pct_change < 0, icon_color_down, icon_color_equal))
+      color <- ifelse(pct_change > 0, "green", ifelse(pct_change < 0, "red", "black"))
+      fill <- pct_change != 0
+      
+      infoBox(
+        title = "Average",
+        icon = shiny::icon(icon_name, style = if (!is.null(color)) paste0("color:", icon_color)),
+        value = round(current_mean, 2),
+        subtitle = paste0("Compared to overall: ", pct_change_text),
+        width = 12,
+        color = color,
+        fill = FALSE
+      )
+    })
+      
+      # Min Box
+      output$box_min <- renderUI({
+        current_min <- min(summaryboxes_filter()[[input$variable]])
+        overall_min <- min(df[[input$variable]])
+        pct_change <- calc_pct_chng(current_min, overall_min)
+        pct_change_text <- paste0(formatC(pct_change, format = "f", digits = 1), "%")
+        
+        # Determine icon and color based on pct_change
+        icon_color_up <- "#00cb21"  # A custom green color (you can use hex codes)
+        icon_color_down <- "#ff6969"  # A custom red color
+        icon_color_equal <- "#bababa"  # A custom blue color for 'equals'
+        
+        icon_name <- ifelse(pct_change > 0, "chevron-up", ifelse(pct_change < 0, "chevron-down", "equals"))
+        icon_color <- ifelse(pct_change > 0, icon_color_up, ifelse(pct_change < 0, icon_color_down, icon_color_equal))
+        color <- ifelse(pct_change > 0, "green", ifelse(pct_change < 0, "red", "black"))
+        fill <- pct_change != 0
+        
+        infoBox(
+          title = "Minimum",
+          icon = shiny::icon(icon_name, style = if (!is.null(color)) paste0("color:", icon_color)),
+          value = round(current_min, 2),
+          subtitle = paste0("Compared to overall: ", pct_change_text),
+          width = 12,
+          color = color,
+          fill = FALSE
+        )
+      })
+      
+      # Max Box
+      output$box_max <- renderUI({
+        current_max <- max(summaryboxes_filter()[[input$variable]])
+        overall_max <- max(df[[input$variable]])
+        pct_change <- calc_pct_chng(current_max, overall_max)
+        pct_change_text <- paste0(formatC(pct_change, format = "f", digits = 1), "%")
+        
+        # Determine icon and color based on pct_change
+        icon_color_up <- "#00cb21"  # A custom green color (you can use hex codes)
+        icon_color_down <- "#ff6969"  # A custom red color
+        icon_color_equal <- "#bababa"  # A custom blue color for 'equals'
+        
+        icon_name <- ifelse(pct_change > 0, "chevron-up", ifelse(pct_change < 0, "chevron-down", "equals"))
+        icon_color <- ifelse(pct_change > 0, icon_color_up, ifelse(pct_change < 0, icon_color_down, icon_color_equal))
+        color <- ifelse(pct_change > 0, "green", ifelse(pct_change < 0, "red", "black"))
+        fill <- pct_change != 0
+        
+        infoBox(
+          title = "Maximum",
+          icon = shiny::icon(icon_name, style = if (!is.null(color)) paste0("color:", icon_color)),
+          value = round(current_max, 2),
+          subtitle = paste0("Compared to overall: ", pct_change_text),
+          width = 12,
+          color = color,
+          fill = FALSE
+        )
+      })
+    
+    # EDA: Observer for the conditional day_type selector that displays if "sqft_per_person" or "num_ppl_raw" are selected
+    output$day_type_selector <- renderUI({
+      if (input$variable %in% c("sqft_per_person", "num_ppl_raw")) {
+        selectInput("day_type", "Day Type",
+                    choices = c("All" = "all",
+                                "Weekdays" = "weekdays",
+                                "Weekends" = "weekends"))
+      }
+    })
     
     # EDA Plots
     observeEvent(input$plot, {
@@ -477,31 +611,46 @@ server <- function(input, output, session) {
             plot_df <- df %>% 
                 filter(bldg_name == input$eda_building, date >= start_date & date <= end_date)
             
-            # Check if 'num_ppl' is the selected variable, plot differently if so. 
-            if (input$variable == "num_ppl") {
-                plot_df <- plot_df %>% 
-                    mutate(day_type = ifelse(weekday == 1, "Weekday", "Weekend")) %>%
-                    group_by(date, day_type) %>%
-                    summarise(num_ppl = sum(num_ppl))
-                
-                ggplot(plot_df, aes(x = date, y = num_ppl, color = day_type)) +
-                  geom_line() +
-                  labs(x = "Date", y = "Number of People", color = "Day Type") +
-                  theme_minimal() +
-                  theme(axis.title = element_text(size = 14),  
-                        axis.text = element_text(size = 12),   
-                        legend.title = element_text(size = 12))
-            } else {
-                ggplot(plot_df, aes_string(x = "date", y = input$variable)) +
-                  geom_line(color = "#155974") +  # Set specific color for lines
-                  labs(x = "Date", y = selected_var) +
-                  theme_minimal() +
-                  theme(axis.title = element_text(size = 14),  
-                        axis.text = element_text(size = 12),   
-                        legend.title = element_text(size = 12))
+            # Additional filtering for day type if 'sqft_per_person' or 'num_ppl_raw' is selected
+            if (!is.null(input$day_type) && input$variable %in% c("sqft_per_person", "num_ppl_raw")) {
+              if(input$day_type == "weekdays") {
+                plot_df <- plot_df %>% filter(weekday == 1)
+              } else if(input$day_type == "weekends") {
+                plot_df <- plot_df %>% filter(weekday == 0)
+              }
+              # No additional filtering for "All"
             }
             
-            #155974
+            
+            # Check if 'sqft_per_person' or 'num_ppl_raw' is the selected variable, plot differently if so.
+            if (!is.null(input$day_type) && input$variable %in% c("sqft_per_person", "num_ppl_raw")) {
+              plot_df <- plot_df %>%
+                mutate(day_type = ifelse(weekday == 1, "Weekday", "Weekend"))
+              
+              # Change y-axis label based on selected variable
+              y_axis_label <- if (input$variable == "sqft_per_person") {
+                "Square Feet Per Person"
+              } else {
+                "Number of People"
+              }
+              
+              ggplot(plot_df, aes(x = date, y = !!sym(input$variable), color = day_type)) +
+                geom_line() +
+                labs(x = "Date", y = y_axis_label, color = "Day Type") +
+                theme_minimal() +
+                theme(axis.title = element_text(size = 15),  
+                      axis.text = element_text(size = 13),   
+                      legend.title = element_text(size = 15),
+                      legend.text = element_text(size = 13))
+            } else {
+                ggplot(plot_df, aes_string(x = "date", y = input$variable)) +
+                  geom_line(color = "#155974", alpha = .8) +  # Set specific color for lines
+                  labs(x = "Date", y = selected_var) +
+                  theme_minimal() +
+                  theme(axis.title = element_text(size = 15),  
+                        axis.text = element_text(size = 13),   
+                        legend.title = element_text(size = 13))
+            }
         })
     }, ignoreNULL = FALSE)
   
@@ -524,7 +673,7 @@ server <- function(input, output, session) {
         # Create a Prophet model
         m <- prophet()
         # # Add each predictor as a regressor
-        m <- add_regressor(m, 'num_ppl')
+        m <- add_regressor(m, 'sqft_per_person')
         m <- add_regressor(m, 'equip_efficiency')
         m <- add_regressor(m, 'hvac_efficiency')
         
@@ -542,23 +691,25 @@ server <- function(input, output, session) {
             
             potential_total_length <- length(total_dates)
             
-            # building-specific adjustments for num_ppl
-            mean_factor_weekday <- c(nakatomi = 60, wayne_manor = -200, budapest = 0)
-            mean_factor_weekend <- c(nakatomi = 150, wayne_manor = -40, budapest = 0)
-            scale_factor_weekday <- c(nakatomi = 0, wayne_manor = -1, budapest = 1)
+            # building-specific adjustments for sqft_per_person
+            mean_factor_weekday <- c(nakatomi = 80, wayne_manor = -150, budapest = -7)
+            mean_factor_weekend <- c(nakatomi = 170, wayne_manor = 45, budapest = 10)
+            scale_factor_weekday <- c(nakatomi = 1, wayne_manor = -1, budapest = 1)
             scale_factor_weekend <- c(nakatomi = 0, wayne_manor = -1, budapest = 1)
-            sd_factor_adjust <- c(nakatomi = 20, wayne_manor = -10, budapest = 2)
+            sd_factor_weekday <- c(nakatomi = 10, wayne_manor = -69, budapest = -7)
+            sd_factor_weekend <- c(nakatomi = 10, wayne_manor = -29, budapest = -7)
+            
             future_full <- add_future_regressor(
                 df = df,
                 future_df = future_full,
                 pred_building = input$scenario_building,
-                variable_name = "num_ppl",
-                future_variable = generate_num_ppl(pred_building = input$scenario_building,
+                variable_name = "sqft_per_person",
+                future_variable = generate_sqft_per_person(df, pred_building = input$scenario_building,
                                                    total_dates, potential_forecast_window,
                                                    mean_factor_weekday, mean_factor_weekend,
                                                    scale_factor_weekday, scale_factor_weekend,
-                                                   sd_factor_adjust,
-                                                   useradjust_num_ppl = input$useradjust_num_ppl)
+                                                   sd_factor_weekday, sd_factor_weekend,
+                                                   useradjust_sqft_per_person = input$useradjust_sqft_per_person)
             )
             
             future_full <- add_future_regressor(

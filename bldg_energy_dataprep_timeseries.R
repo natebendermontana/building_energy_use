@@ -31,6 +31,8 @@ temp_adjust <- c(nakatomi = 3, wayne_manor = 0, budapest = -3)
 bldg_names <- rep(buildings, each = days)
 dates_rep <- rep(dates, times = length(buildings))
 weekdays <- ifelse(wday(dates_rep) %in% c(1, 7), 0, 1) # 0 for weekend, 1 for weekday
+weekdays_singlebldg <- ifelse(wday(dates) %in% c(1, 7), 0, 1) # 0 for weekend, 1 for weekday
+
 # Unique ID for each row
 ids <- seq_len(days * length(buildings))
 
@@ -38,6 +40,7 @@ ids <- seq_len(days * length(buildings))
 # (assume units: sq ft) (assuming they remain constant over the time period for simplicity)
 # bldg_area <- round(runif(length(buildings), min = 5000, max = 25000)) # if you want to scramble bldg_size each run
 bldg_area <- c(21110, 7260, 15200) # nakatomi, wayne_manor, budapest
+bldg_area_named <- setNames(bldg_area, c("nakatomi", "wayne_manor", "budapest"))
 bldg_area_rep <- rep(bldg_area, each = days)
 
 #### NUMBER OF PEOPLE #####################
@@ -75,13 +78,20 @@ bldg_area_rep <- rep(bldg_area, each = days)
 # 
 # plot(sqft_per_person)  # Plot the square feet per person
 
-generate_building_data <- function(building_name, days, weekdays, mean_factor_weekday, mean_factor_weekend,
-                                   scale_factor_weekday, scale_factor_weekend, sd_factor_adjust, bldg_area) {
-  num_ppl <- numeric(length = days)
-  sqft_per_person <- numeric(length = days)
+mean_factor_weekday <- c(nakatomi = 60, wayne_manor = -150, budapest = -8)
+mean_factor_weekend <- c(nakatomi = 150, wayne_manor = -30, budapest = -8)
+scale_factor_weekday <- c(nakatomi = 0, wayne_manor = -1, budapest = 1)
+scale_factor_weekend <- c(nakatomi = 0, wayne_manor = -1, budapest = 1)
+sd_factor_adjust <- c(nakatomi = 20, wayne_manor = -10, budapest = 0)
+
+generate_num_ppl <- function(building_name, dates, weekdays_singlebldg, mean_factor_weekday, mean_factor_weekend,
+                             scale_factor_weekday, scale_factor_weekend, sd_factor_adjust, bldg_area_named) {
   
-  for (i in 1:length(days)) {
-    if (weekdays[i] == 1) {  # Weekday
+  num_ppl_raw <- numeric(length = length(dates))
+  sqft_per_person <- numeric(length = length(dates))
+  
+  for (i in 1:length(dates)) {
+    if (weekdays_singlebldg[i] == 1) {  # Weekday
       mean_factor <- 300 + mean_factor_weekday[building_name]
       scale_factor <- 5 + scale_factor_weekday[building_name]
       sd_factor <- 70 + sd_factor_adjust[building_name]
@@ -91,20 +101,32 @@ generate_building_data <- function(building_name, days, weekdays, mean_factor_we
       sd_factor <- 30 + sd_factor_adjust[building_name]
     }
     
-    num_people <- as.integer(pmax(0, pmin(2000, rgamma(1, shape = 2, scale = scale_factor) + 1 +
-                                            abs(round(rnorm(1, mean = mean_factor, sd = sd_factor), 0)))))
-    sqft_per_person[i] <- if (num_people > 0) bldg_area / num_people else NA
+    num_ppl_raw[i] <- as.integer(pmax(0, pmin(2000, rgamma(1, shape = 2, scale = scale_factor) + 1 +
+                                                abs(round(rnorm(1, mean = mean_factor, sd = sd_factor), 0)))))
+    sqft_per_person[i] <- if (num_ppl_raw[i] > 0) bldg_area_named[building_name] / num_ppl_raw[i] else NA
   }
   
-  data.frame(date = days, building = building_name, num_ppl = num_ppl, sqft_per_person = sqft_per_person)
+  building_area <- rep(bldg_area_named[building_name], length(dates))
+  
+  return(data.frame(date = dates, weekdays = weekdays_singlebldg, bldg_name = building_name, bldg_area = building_area, num_ppl_raw = num_ppl_raw, sqft_per_person = sqft_per_person))
 }
 
-# Example usage:
-# Assuming 'days' and 'weekdays' are predefined vectors
-combined_data <- do.call(rbind, lapply(buildings, function(building) {
-  generate_building_data(building, days, weekdays, mean_factor_weekday, mean_factor_weekend,
-                         scale_factor_weekday, scale_factor_weekend, sd_factor_adjust, bldg_area[building])
-}))
+overall_ppl <- do.call(rbind, lapply(buildings, function(building_name) {
+  generate_num_ppl(building_name, dates, weekdays_singlebldg, mean_factor_weekday, mean_factor_weekend,
+                   scale_factor_weekday, scale_factor_weekend, sd_factor_adjust, bldg_area_named)}))
+
+# check distributions if needed
+# overall_ppl %>% 
+#   filter(building == "budapest") %>% 
+#     ggplot(aes(x = date, y = sqft_per_person, color = factor(weekdays))) +
+#     geom_point() +  # Scatter plot
+#     labs(title = "Square Feet Per Person - Nakatomi",
+#          x = "Date",
+#          y = "Square Feet Per Person",
+#          color = "Day Type") +
+#     scale_color_manual(values = c("blue", "red"), 
+#                        labels = c("Weekday", "Weekend")) +
+#     theme_minimal()
 
 
 #### /x/INSULATION QUALITY #####################
@@ -346,12 +368,15 @@ df <- tibble(
   month = month(dates_rep, label=T),
   day = wday(dates_rep, label=T),
   weekday = as.integer(weekdays),
-  num_ppl = as.integer(num_ppl), 
   temp = as.integer(temp),
   wind_speed = as.integer(wind_speed),
   cloud_cover = as.integer(cloud_cover),
   total = total
 )
+
+overall_ppl <- overall_ppl[, c("date", "bldg_name", "num_ppl_raw", "sqft_per_person")]
+df <- merge(df, overall_ppl, by = c("date", "bldg_name"), all.x = TRUE)
+
 
 df <- merge(df, efficiency_long[, c("date", "bldg_name", "equip_efficiency")], by = c("date", "bldg_name"))
 df <- merge(df, hvac_long[, c("date", "bldg_name", "hvac_efficiency")], by = c("date", "bldg_name"))
@@ -382,7 +407,7 @@ ggplot(df, aes(x = date, y = cloud_cover)) +
 # Generate coefficients for the linear model
 coefficients <- c(
   bldg_area = .05,
-  num_ppl = .5,
+  sqft_per_person = -.5,
   hvac_efficiency = -2,
   equip_efficiency = -2.2,
   temp = 1.1,
@@ -395,7 +420,7 @@ df <- df %>%
   mutate(
     total = 
       bldg_area * coefficients["bldg_area"] +
-      num_ppl * coefficients["num_ppl"] +
+      sqft_per_person * coefficients["sqft_per_person"] +
       hvac_efficiency * coefficients["hvac_efficiency"] +
       equip_efficiency * coefficients["equip_efficiency"] +
       temp * coefficients["temp"] +
@@ -408,13 +433,13 @@ df <- df %>%
 df <- df %>%
   select(
     date, bldg_name, id, bldg_area, year, month, day, weekday,
-    num_ppl, temp, wind_speed, cloud_cover, equip_efficiency,
+    sqft_per_person, temp, wind_speed, cloud_cover, equip_efficiency,
     hvac_efficiency, total
   )
 
 #### FINAL CHECKS #####################
 # Create an index vector for variable order
-var_order <- c("bldg_area", "num_ppl", "equip_efficiency", 
+var_order <- c("bldg_area", "sqft_per_person", "equip_efficiency", 
                "hvac_efficiency", "temp", "wind_speed", 
                "cloud_cover", "total")
 col_indices <- match(var_order, names(df))
