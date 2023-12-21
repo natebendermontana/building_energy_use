@@ -36,10 +36,48 @@ forecast_static_min <- max(df$date)+1 # possible predictions start at latest his
 potential_forecast_window <- 365*3 # can forecast up to three years beyond the day after the latest historical date
 potential_forecast_window_end <- forecast_static_min + potential_forecast_window
 
+# ************************************************************
+# ************************************************************
+# Func: Energy Prices ########################################
+# ************************************************************
+generate_energyprices <- function(df, total_dates, potential_total_length, useradjust_energyprices) {
+  current_price <- 0.225 # Initial average price
+  
+  # Calculate the percentage adjustment from the user input
+  pcnt_adjustment <- 1 + (useradjust_energyprices / 100)
+  
+  # Create a vector to store future energy price data
+  future_energy_prices <- numeric(length = potential_total_length)
+  
+  for (i in 1:potential_total_length) {
+    # Apply a very small daily change to simulate long-term trends
+    yearly_trend <- rnorm(1, mean = 0, sd = 0.001)
+    
+    # Simulate daily variation with a tighter range
+    daily_change <- rnorm(1, mean = 0, sd = 0.001)
+    
+    # Less frequent and significant random events
+    if (runif(1) < 0.001) {
+      event_change <- rnorm(1, mean = 0, sd = 0.002)
+    } else {
+      event_change <- 0
+    }
+    
+    # Calculate the new price with tightened constraints and user adjustment
+    new_price <- max(0.10, min(0.50, (current_price + yearly_trend + daily_change + event_change) * pcnt_adjustment))
+    future_energy_prices[i] <- new_price
+    
+    # Update the current price for the next day
+    current_price <- new_price
+  }
+  
+  return(future_energy_prices)
+}
+
 
 # ************************************************************
 # ************************************************************
-# Func: Num People ###########################################
+# Func: Sqft Per Person ######################################
 # ************************************************************
 
 generate_sqft_per_person <- function(df, pred_building, total_dates, potential_total_length, mean_factor_weekday, mean_factor_weekend,
@@ -181,6 +219,7 @@ add_future_regressor <- function(df, future_df, pred_building, variable_name, fu
     
     return(future_df)
 }
+
 
 # UI ##########################
 
@@ -402,7 +441,11 @@ dashboardPage(
                                      ))
                             ),
                             fluidRow(
-                                column(12,
+                              column(6,
+                                     sliderInput("useradjust_energyprices", "Percent adjustment: Price per KWh",
+                                                 min = -100, max = 100, value = 0, post = "%")
+                              ),
+                              column(6,
                                        actionButton("run_scenario", "Run Scenario",
                                        style = 'color: #ffffff; background-color: #155974; border-color: #155974; 
                                                                 font-size: 110%; margin-top: 20px;')
@@ -415,15 +458,17 @@ dashboardPage(
                     #     withSpinner(dygraphOutput("scenario_plot"), id = "dygraph_spinner"),
                     #     withSpinner(verbatimTextOutput("scenario_details"), id = "dygraph_spinner"))) 
                     # new Layout
-                    fluidRow(column(12,
-                                    uiOutput("energy_totals"))),
                     hidden(
                       div(id = 'scenario_plotdiv',
                           fluidRow(
                             column(width = 12,
                                    withSpinner(dygraphOutput("scenario_plot"), id = "dygraph_spinner")
                             )
-                          )))
+                          ))),
+                    fluidRow(column(12,
+                                    uiOutput("energy_totals")),
+                             (column(12,
+                                     uiOutput("cost_total")))),
             )
         )
     )
@@ -432,7 +477,9 @@ dashboardPage(
 )
 
 
-# Server ####
+# Server ##########################################################
+# *****************************************************************
+# *****************************************************************
 server <- function(input, output, session) {
   
   # Flag to check if scenario rendering has started
@@ -585,9 +632,6 @@ server <- function(input, output, session) {
           color <- ifelse(pct_change > 0, "green", ifelse(pct_change < 0, "red", "black"))
           fill <- pct_change != 0
         }
-        
-        print(paste("cur min: in output box: ", current_min))
-        print(paste("ovr min: in output box: ", overall_min))
         
         # Safeguard against invalid or undefined values
         if(is.finite(pct_change) && is.finite(overall_min)) {
@@ -822,28 +866,49 @@ server <- function(input, output, session) {
             total_energy_use <- sum(filtered_scenario$yhat)
             
             infoBox(
-              title = "Energy: Total Predicted",
+              title = "Predicted KWh",
               value = comma(round(total_energy_use, 2)),
               icon = icon("bolt"),
               color = "blue",
               fill = TRUE
             )
         }) 
+            
+            output$cost_total <- renderUI({
+              # Only proceed if the scenario data is available and the model has run
+              if (!is.null(filtered_scenario) && "yhat" %in% names(filtered_scenario)) {
+                # Ensure that 'price_per_kwh' vector is of the same length as 'filtered_scenario$yhat'
+                price_per_kwh <- generate_energyprices(df, total_dates, potential_total_length, useradjust_energyprices)
+                price_per_kwh <- price_per_kwh[1:length(filtered_scenario$yhat)]
+                
+                # Calculate the total predicted energy usage multiplied by the price for each day
+                total_energy_cost <- sum(filtered_scenario$yhat * price_per_kwh)
+                
+                
+                ##############################################################################
+                ##############################################################################
+                ##############################################################################
+                # start here - get the energy price calculation and display to work 
+                ##############################################################################
+                ##############################################################################
+                ##############################################################################                
+                # Display the total cost in dollar units, with thousands separators and 2 decimal places
+                infoBox(
+                  title = "Predicted Total Energy Cost",
+                  value = scales::dollar_format(suffix = "", big.mark = ",", decimal.mark = ".")(total_energy_cost),
+                  icon = icon("dollar-sign"),
+                  color = "green",
+                  fill = TRUE
+                )
+              }
+            })
     })
+    
+    
     
 } # closes server
 
 
 # Run the application
 shinyApp(ui, server)
-
-df %>%
-  filter(bldg_name == "nakatomi") %>%
-  summarise(
-    avg = mean(num_ppl_raw, na.rm = TRUE), # Add na.rm = TRUE to handle NA values
-    min = min(num_ppl_raw, na.rm = TRUE),
-    max = max(num_ppl_raw, na.rm = TRUE),
-    start_date <- as.Date(min(df$date)),
-    end_date <- as.Date(max(df$date))
-  )
 

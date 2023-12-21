@@ -37,6 +37,45 @@ weekdays_singlebldg <- ifelse(wday(dates, week_start = 1) %in% c(6, 7), 0, 1) # 
 # Unique ID for each row
 ids <- seq_len(days * length(buildings))
 
+
+
+#### ENERGY COSTS ###########################
+simulate_energy_prices <- function(start_date, end_date) {
+  dates <- seq.Date(as.Date(start_date), as.Date(end_date), by = "day")
+  current_price <- 22.5 # Initial average price
+  
+  # Create a matrix to store price data
+  price_data <- matrix(nrow = length(dates), ncol = 1)
+  
+  for (date_idx in 1:length(dates)) {
+    # Apply a small yearly decline or increase to simulate long-term trends
+    yearly_trend <- (as.integer(.005)) # add a very small daily negative constant to simulate long-term degradation
+    # Simulate daily variation
+    daily_change <- sample(c(-.005, 0, .005), 1, prob = c(0.005, 0.96, 0.045))
+    # Random events: less frequent and significant changes
+    if (runif(1) < 0.00001) { # 1% chance for a significant event, so roughly 3-4 times a year
+      event_change <- sample(-1:1, 1)
+    } else {
+      event_change <- 0
+    }
+    
+    # Calculate the new price
+    new_price <- max(15, min(30, current_price + yearly_trend + daily_change + event_change))
+    price_data[date_idx] <- new_price
+    
+    # Update the current price for the next day
+    current_price <- new_price
+  }
+  
+  # Return a data frame of dates and simulated prices
+  data.frame(Date = dates, Price_per_kWh = price_data)
+}
+
+# Use the function with the provided start and end dates
+energy_prices <- simulate_energy_costs(start_date, end_date)
+
+plot(energy_prices)
+
 #### BUILDING FOOTPRINT ##################### 
 # (assume units: sq ft) (assuming they remain constant over the time period for simplicity)
 # bldg_area <- round(runif(length(buildings), min = 5000, max = 25000)) # if you want to scramble bldg_size each run
@@ -178,7 +217,7 @@ for (bldg in seq_along(buildings)) {
     daily_change <- sample(c(-.20, 0, .20), 1, prob = c(0.045, 0.96, 0.005)) # Mostly no daily change, slightly better chance of small bad change
     # Random events: significant increase or decrease
     if (runif(1) < 0.004) { # 1% chance for a significant event, so roughly 3-4 times a year
-      event_change <- sample(-10:10, 1)
+      event_change <- sample(-10:10, 1) # equal chance of good or bad change
     } else {
       event_change <- 0
     }
