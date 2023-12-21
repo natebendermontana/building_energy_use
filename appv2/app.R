@@ -642,7 +642,7 @@ server <- function(input, output, session) {
                 geom_line() +
                 labs(x = "Date", y = y_axis_label, color = "Day Type") +
                 theme_minimal() +
-                theme(axis.title = element_text(size = 15),  
+                theme(axis.title = element_text(size = 16),  
                       axis.text = element_text(size = 13),   
                       legend.title = element_text(size = 15),
                       legend.text = element_text(size = 13))+
