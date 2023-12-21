@@ -3,6 +3,7 @@
 library(dplyr)
 library(ggplot2)
 library(lubridate)
+library(scales)
 # prophet modeling
 library(prophet)
 library(dygraphs)
@@ -401,7 +402,7 @@ dashboardPage(
                                      ))
                             ),
                             fluidRow(
-                                column(12, offset = 0,
+                                column(12,
                                        actionButton("run_scenario", "Run Scenario",
                                        style = 'color: #ffffff; background-color: #155974; border-color: #155974; 
                                                                 font-size: 110%; margin-top: 20px;')
@@ -409,9 +410,20 @@ dashboardPage(
                             )
                         )
                     ),
-                    hidden(div(id = 'scenario_plotdiv', 
-                        withSpinner(dygraphOutput("scenario_plot"), id = "dygraph_spinner"),
-                        withSpinner(verbatimTextOutput("scenario_details"), id = "dygraph_spinner")))                         
+                    # original UI
+                    # hidden(div(id = 'scenario_plotdiv', 
+                    #     withSpinner(dygraphOutput("scenario_plot"), id = "dygraph_spinner"),
+                    #     withSpinner(verbatimTextOutput("scenario_details"), id = "dygraph_spinner"))) 
+                    # new Layout
+                    fluidRow(column(12,
+                                    uiOutput("energy_totals"))),
+                    hidden(
+                      div(id = 'scenario_plotdiv',
+                          fluidRow(
+                            column(width = 12,
+                                   withSpinner(dygraphOutput("scenario_plot"), id = "dygraph_spinner")
+                            )
+                          )))
             )
         )
     )
@@ -612,17 +624,6 @@ server <- function(input, output, session) {
         )
       })
       
-      observe({
-        temp_df <- df %>% 
-          filter(bldg_name == input$eda_building)
-      print(paste("building: ", input$eda_building))
-      print(paste("overall mean: ", mean(temp_df[[input$variable]])))
-      print(paste("overall min: ", min(temp_df[[input$variable]])))
-      print(paste("overall max: ", max(temp_df[[input$variable]])))
-      print(paste("start date: ", as.Date(min(input$time_period))))
-      print(paste("end date: ", as.Date(max(input$time_period))))
-      })
-      
     # EDA: Observer for the conditional day_type selector that displays if "sqft_per_person" or "num_ppl_raw" are selected
     output$day_type_selector <- renderUI({
       if (input$variable %in% c("sqft_per_person", "num_ppl_raw")) {
@@ -693,7 +694,7 @@ server <- function(input, output, session) {
     }, ignoreNULL = FALSE)
   
     
-    # Server code for Scenario Planning - run the full simulations
+# Server code for Scenario Planning - run the full simulations
     observeEvent(input$run_scenario, {
       
       output$scenario_plot <- renderUI({}) # render a blank plot
@@ -709,7 +710,7 @@ server <- function(input, output, session) {
         
         
         # Create a Prophet model
-        m <- prophet()
+        m <- prophet(interval.width = .8) # .8 is the default confidence interval 
         # # Add each predictor as a regressor
         m <- add_regressor(m, 'sqft_per_person')
         m <- add_regressor(m, 'equip_efficiency')
@@ -787,13 +788,26 @@ server <- function(input, output, session) {
               dyplot.prophet(m, filtered_scenario)
             })
             
-            output$scenario_details <- renderPrint({
-                summary <- filtered_scenario %>%
-                    summarise(Start_Date = min(ds), End_Date = max(ds), Total_kwh = sum(yhat))
-                print(summary)
-            })
-            shinyjs::hide("dygraph_spinner")
+            # output$scenario_details <- renderPrint({
+            #     summary <- filtered_scenario %>%
+            #         summarise(Start_Date = min(ds), End_Date = max(ds), Total_kwh = sum(yhat))
+            #     print(summary)
+            # })
+            # shinyjs::hide("dygraph_spinner")
         }
+       
+            output$energy_totals <- renderUI({
+          # Only proceed if the scenario data is available and the model has run
+            total_energy_use <- sum(filtered_scenario$yhat)
+            
+            infoBox(
+              title = "Energy: Total Predicted",
+              value = comma(round(total_energy_use, 2)),
+              icon = icon("bolt"),
+              color = "blue",
+              fill = TRUE
+            )
+        }) 
     })
     
 } # closes server
