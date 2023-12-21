@@ -42,25 +42,27 @@ ids <- seq_len(days * length(buildings))
 #### ENERGY COSTS ###########################
 simulate_energy_prices <- function(start_date, end_date) {
   dates <- seq.Date(as.Date(start_date), as.Date(end_date), by = "day")
-  current_price <- 22.5 # Initial average price
+  current_price <- 0.225 # Initial average price
   
   # Create a matrix to store price data
   price_data <- matrix(nrow = length(dates), ncol = 1)
   
   for (date_idx in 1:length(dates)) {
-    # Apply a small yearly decline or increase to simulate long-term trends
-    yearly_trend <- (as.integer(.005)) # add a very small daily negative constant to simulate long-term degradation
-    # Simulate daily variation
-    daily_change <- sample(c(-.005, 0, .005), 1, prob = c(0.005, 0.96, 0.045))
-    # Random events: less frequent and significant changes
-    if (runif(1) < 0.00001) { # 1% chance for a significant event, so roughly 3-4 times a year
-      event_change <- sample(-1:1, 1)
+    # Apply a very small daily change to simulate long-term trends
+    yearly_trend <- rnorm(1, mean = 0.00001, sd = 0.001) 
+    
+    # Simulate daily variation with a tighter range
+    daily_change <- rnorm(1, mean = 0, sd = 0.001) 
+    
+    # Less frequent and significant random events
+    if (runif(1) < 0.001) { # Reduced chance for a significant event
+      event_change <- rnorm(1, mean = 0, sd = 0.002)
     } else {
       event_change <- 0
     }
     
-    # Calculate the new price
-    new_price <- max(15, min(30, current_price + yearly_trend + daily_change + event_change))
+    # Calculate the new price with tightened constraints
+    new_price <- max(0.10, min(0.5, current_price + yearly_trend + daily_change + event_change))
     price_data[date_idx] <- new_price
     
     # Update the current price for the next day
@@ -68,13 +70,13 @@ simulate_energy_prices <- function(start_date, end_date) {
   }
   
   # Return a data frame of dates and simulated prices
-  data.frame(Date = dates, Price_per_kWh = price_data)
+  data.frame(date = dates, price_per_kwh = price_data)
 }
 
 # Use the function with the provided start and end dates
-energy_prices <- simulate_energy_costs(start_date, end_date)
+temp_prices <- simulate_energy_prices(start_date, end_date)
 
-plot(energy_prices)
+
 
 #### BUILDING FOOTPRINT ##################### 
 # (assume units: sq ft) (assuming they remain constant over the time period for simplicity)
@@ -440,6 +442,8 @@ df <- merge(df, overall_ppl, by = c("date", "bldg_name"), all.x = TRUE)
 
 df <- merge(df, efficiency_long[, c("date", "bldg_name", "equip_efficiency")], by = c("date", "bldg_name"))
 df <- merge(df, hvac_long[, c("date", "bldg_name", "hvac_efficiency")], by = c("date", "bldg_name"))
+df <- merge(df, temp_prices, by = "date")
+
 
 
 # ggplot(df, aes(x = date, y = wind_speed, color = bldg_name)) + 
@@ -492,17 +496,17 @@ df <- df %>%
 # fix the col order
 df <- df %>%
   select(
-    date, bldg_name, id, bldg_area, year, month, day, weekday, num_ppl_raw,
+    date, price_per_kwh, bldg_name, id, bldg_area, year, month, day, weekday, num_ppl_raw,
     sqft_per_person, temp, wind_speed, cloud_cover, equip_efficiency,
     hvac_efficiency, total
   )
 
 #### FINAL CHECKS #####################
 # Create an index vector for variable order
-var_order <- c("bldg_area", "num_ppl_raw", "sqft_per_person", "equip_efficiency", 
-               "hvac_efficiency", "temp", "wind_speed", 
-               "cloud_cover", "total")
-col_indices <- match(var_order, names(df))
+# var_order <- c("bldg_area", "num_ppl_raw", "sqft_per_person", "equip_efficiency", 
+#                "hvac_efficiency", "temp", "wind_speed", 
+#                "cloud_cover", "total")
+# col_indices <- match(var_order, names(df))
 
 # Display parallel coordinates plot grouped by "hvac_type"
 # ggparcoord(data = df,
@@ -524,33 +528,33 @@ col_indices <- match(var_order, names(df))
 #   scale_color_manual(values = c("nakatomi" = "grey", "wayne_manor" = "grey", "budapest" = "#20639b"))
 
 
-
-bldg <- "nakatomi"
-df %>% 
-  filter(bldg_name == bldg) %>% 
-  ggplot(aes(x = date, y = total)) +
-  geom_point() +
-  labs(title = paste("Total Energy Usage for", bldg, "Building"),
-       x = "Date",
-       y = "Total Energy Usage")
-
-bldg <- "wayne_manor"
-df %>% 
-  filter(bldg_name == bldg) %>% 
-  ggplot(aes(x = date, y = total)) +
-  geom_point() +
-  labs(title = paste("Total Energy Usage for", bldg, "Building"),
-       x = "Date",
-       y = "Total Energy Usage")
-
-bldg <- "budapest"
-df %>% 
-  filter(bldg_name == bldg) %>% 
-  ggplot(aes(x = date, y = total)) +
-  geom_point() +
-  labs(title = paste("Total Energy Usage for", bldg, "Building"),
-       x = "Date",
-       y = "Total Energy Usage")
+# 
+# bldg <- "nakatomi"
+# df %>% 
+#   filter(bldg_name == bldg) %>% 
+#   ggplot(aes(x = date, y = total)) +
+#   geom_point() +
+#   labs(title = paste("Total Energy Usage for", bldg, "Building"),
+#        x = "Date",
+#        y = "Total Energy Usage")
+# 
+# bldg <- "wayne_manor"
+# df %>% 
+#   filter(bldg_name == bldg) %>% 
+#   ggplot(aes(x = date, y = total)) +
+#   geom_point() +
+#   labs(title = paste("Total Energy Usage for", bldg, "Building"),
+#        x = "Date",
+#        y = "Total Energy Usage")
+# 
+# bldg <- "budapest"
+# df %>% 
+#   filter(bldg_name == bldg) %>% 
+#   ggplot(aes(x = date, y = total)) +
+#   geom_point() +
+#   labs(title = paste("Total Energy Usage for", bldg, "Building"),
+#        x = "Date",
+#        y = "Total Energy Usage")
 
 
 # df %>%
