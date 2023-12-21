@@ -506,12 +506,20 @@ server <- function(input, output, session) {
       
     # Mean Box
     output$box_avg <- renderUI({
-      current_mean <- mean(summaryboxes_filter()[[input$variable]], na.rm = TRUE)
-      overall_mean <- mean(df[[input$variable]], na.rm = TRUE)
+      temp_ovrall <- df %>% 
+        filter(bldg_name == input$eda_building)
+      
+      current_mean <- mean(summaryboxes_filter()[[input$variable]])
+      overall_mean <- mean(temp_ovrall[[input$variable]])
       pct_change <- calc_pct_chng(current_mean, overall_mean)
       
-      #color <- ifelse(pct_change >= 0, "green", "red")
-      pct_change_text <- paste0(formatC(pct_change, format = "f", digits = 1), "%")
+      print(paste("in output box: ", current_mean))
+      print(paste("in output box: ", overall_mean))
+      
+      # Format the percentage change and the overall value
+      pct_change_text <- paste0(formatC(pct_change, format = "f", digits = 1), 
+                                "% compared to overall: ", 
+                                formatC(overall_mean, format = "f", digits = 2))     
       
       # Determine icon and color based on pct_change
       icon_color_up <- "#00cb21"  # A custom green color (you can use hex codes)
@@ -524,10 +532,10 @@ server <- function(input, output, session) {
       fill <- pct_change != 0
       
       infoBox(
-        title = "Average",
+        title = HTML("<strong>", "Average", "</strong>"),
         icon = shiny::icon(icon_name, style = if (!is.null(color)) paste0("color:", icon_color)),
         value = round(current_mean, 2),
-        subtitle = paste0("Compared to overall: ", pct_change_text),
+        subtitle = paste0(pct_change_text),
         width = 12,
         color = color,
         fill = FALSE
@@ -536,10 +544,17 @@ server <- function(input, output, session) {
       
       # Min Box
       output$box_min <- renderUI({
+        temp_ovrall <- df %>% 
+          filter(bldg_name == input$eda_building)
+        
         current_min <- min(summaryboxes_filter()[[input$variable]])
-        overall_min <- min(df[[input$variable]])
+        overall_min <- min(temp_ovrall[[input$variable]])
         pct_change <- calc_pct_chng(current_min, overall_min)
-        pct_change_text <- paste0(formatC(pct_change, format = "f", digits = 1), "%")
+
+        # Format the percentage change and the overall value
+        pct_change_text <- paste0(formatC(pct_change, format = "f", digits = 1), 
+                                  "% compared to overall: ", 
+                                  formatC(overall_min, format = "f", digits = 2))   
         
         # Determine icon and color based on pct_change
         icon_color_up <- "#00cb21"  # A custom green color (you can use hex codes)
@@ -552,10 +567,10 @@ server <- function(input, output, session) {
         fill <- pct_change != 0
         
         infoBox(
-          title = "Minimum",
+          title = HTML("<strong>", "Minimum", "</strong>"),
           icon = shiny::icon(icon_name, style = if (!is.null(color)) paste0("color:", icon_color)),
           value = round(current_min, 2),
-          subtitle = paste0("Compared to overall: ", pct_change_text),
+          subtitle = paste0(pct_change_text),
           width = 12,
           color = color,
           fill = FALSE
@@ -564,11 +579,18 @@ server <- function(input, output, session) {
       
       # Max Box
       output$box_max <- renderUI({
-        current_max <- max(summaryboxes_filter()[[input$variable]])
-        overall_max <- max(df[[input$variable]])
-        pct_change <- calc_pct_chng(current_max, overall_max)
-        pct_change_text <- paste0(formatC(pct_change, format = "f", digits = 1), "%")
+        temp_ovrall <- df %>% 
+          filter(bldg_name == input$eda_building)
         
+        current_max <- max(summaryboxes_filter()[[input$variable]])
+        overall_max <- max(temp_ovrall[[input$variable]])
+        pct_change <- calc_pct_chng(current_max, overall_max)
+
+        # Format the percentage change and the overall value
+        pct_change_text <- paste0(formatC(pct_change, format = "f", digits = 1), 
+                                  "% compared to overall: ", 
+                                  formatC(overall_max, format = "f", digits = 2))   
+      
         # Determine icon and color based on pct_change
         icon_color_up <- "#00cb21"  # A custom green color (you can use hex codes)
         icon_color_down <- "#ff6969"  # A custom red color
@@ -580,16 +602,27 @@ server <- function(input, output, session) {
         fill <- pct_change != 0
         
         infoBox(
-          title = "Maximum",
+          title = HTML("<strong>", "Maximum", "</strong>"),
           icon = shiny::icon(icon_name, style = if (!is.null(color)) paste0("color:", icon_color)),
-          value = round(current_max, 2),
-          subtitle = paste0("Compared to overall: ", pct_change_text),
+          value = HTML(round(current_max, 2), "<br>"),
+          subtitle = paste0(pct_change_text),
           width = 12,
           color = color,
           fill = FALSE
         )
       })
-    
+      
+      observe({
+        temp_df <- df %>% 
+          filter(bldg_name == input$eda_building)
+      print(paste("building: ", input$eda_building))
+      print(paste("overall mean: ", mean(temp_df[[input$variable]])))
+      print(paste("overall min: ", min(temp_df[[input$variable]])))
+      print(paste("overall max: ", max(temp_df[[input$variable]])))
+      print(paste("start date: ", as.Date(min(input$time_period))))
+      print(paste("end date: ", as.Date(max(input$time_period))))
+      })
+      
     # EDA: Observer for the conditional day_type selector that displays if "sqft_per_person" or "num_ppl_raw" are selected
     output$day_type_selector <- renderUI({
       if (input$variable %in% c("sqft_per_person", "num_ppl_raw")) {
@@ -642,7 +675,7 @@ server <- function(input, output, session) {
                 geom_line() +
                 labs(x = "Date", y = y_axis_label, color = "Day Type") +
                 theme_minimal() +
-                theme(axis.title = element_text(size = 16),  
+                theme(axis.title = element_text(size = 15),  
                       axis.text = element_text(size = 13),   
                       legend.title = element_text(size = 15),
                       legend.text = element_text(size = 13))+
@@ -768,4 +801,14 @@ server <- function(input, output, session) {
 
 # Run the application
 shinyApp(ui, server)
+
+df %>%
+  filter(bldg_name == "nakatomi") %>%
+  summarise(
+    avg = mean(num_ppl_raw, na.rm = TRUE), # Add na.rm = TRUE to handle NA values
+    min = min(num_ppl_raw, na.rm = TRUE),
+    max = max(num_ppl_raw, na.rm = TRUE),
+    start_date <- as.Date(min(df$date)),
+    end_date <- as.Date(max(df$date))
+  )
 
