@@ -509,7 +509,13 @@ server <- function(input, output, session) {
       
     # Function to calculate percentage change
     calc_pct_chng <- function(current_value, overall_value) {
-      if (overall_value == 0 || is.na(current_value) || is.na(overall_value)) {
+      tiny_value <- 1e-6  # Small value to avoid division by zero
+      
+      if (overall_value == 0) {
+        overall_value <- tiny_value
+      }
+      
+      if (is.na(current_value) || is.na(overall_value)) {
         return(NA)
       } else {
         return((current_value - overall_value) / overall_value * 100)
@@ -524,9 +530,6 @@ server <- function(input, output, session) {
       current_mean <- mean(summaryboxes_filter()[[input$variable]])
       overall_mean <- mean(temp_ovrall[[input$variable]])
       pct_change <- calc_pct_chng(current_mean, overall_mean)
-      
-      print(paste("in output box: ", current_mean))
-      print(paste("in output box: ", overall_mean))
       
       # Format the percentage change and the overall value
       pct_change_text <- paste0(formatC(pct_change, format = "f", digits = 1), 
@@ -561,22 +564,39 @@ server <- function(input, output, session) {
         
         current_min <- min(summaryboxes_filter()[[input$variable]])
         overall_min <- min(temp_ovrall[[input$variable]])
-        pct_change <- calc_pct_chng(current_min, overall_min)
-
-        # Format the percentage change and the overall value
-        pct_change_text <- paste0(formatC(pct_change, format = "f", digits = 1), 
-                                  "% compared to overall: ", 
-                                  formatC(overall_min, format = "f", digits = 2))   
         
-        # Determine icon and color based on pct_change
-        icon_color_up <- "#00cb21"  # A custom green color (you can use hex codes)
-        icon_color_down <- "#ff6969"  # A custom red color
-        icon_color_equal <- "#bababa"  # A custom blue color for 'equals'
+        # Check if both current_min and overall_min are zero
+        if (current_min == 0 && overall_min == 0) {
+          pct_change <- 0
+          icon_name <- "equals"
+          icon_color <- "#bababa"  # Grey color for equals
+          color <- "black"  # Neutral color for the box
+          fill <- FALSE
+        } else {
+          pct_change <- calc_pct_chng(current_min, overall_min)
+      
+          # Determine icon and color based on pct_change
+          icon_color_up <- "#00cb21"  # A custom green color (you can use hex codes)
+          icon_color_down <- "#ff6969"  # A custom red color
+          icon_color_equal <- "#bababa"  # A custom blue color for 'equals'
+          
+          icon_name <- ifelse(pct_change > 0, "chevron-up", ifelse(pct_change < 0, "chevron-down", "equals"))
+          icon_color <- ifelse(pct_change > 0, icon_color_up, ifelse(pct_change < 0, icon_color_down, icon_color_equal))
+          color <- ifelse(pct_change > 0, "green", ifelse(pct_change < 0, "red", "black"))
+          fill <- pct_change != 0
+        }
         
-        icon_name <- ifelse(pct_change > 0, "chevron-up", ifelse(pct_change < 0, "chevron-down", "equals"))
-        icon_color <- ifelse(pct_change > 0, icon_color_up, ifelse(pct_change < 0, icon_color_down, icon_color_equal))
-        color <- ifelse(pct_change > 0, "green", ifelse(pct_change < 0, "red", "black"))
-        fill <- pct_change != 0
+        print(paste("cur min: in output box: ", current_min))
+        print(paste("ovr min: in output box: ", overall_min))
+        
+        # Safeguard against invalid or undefined values
+        if(is.finite(pct_change) && is.finite(overall_min)) {
+          pct_change_text <- paste0(formatC(pct_change, format = "f", digits = 1), 
+                                    "% compared to overall: ", 
+                                    formatC(overall_min, format = "f", digits = 2))   
+        } else {
+          pct_change_text <- "N/A"
+        } 
         
         infoBox(
           title = HTML("<strong>", "Minimum", "</strong>"),
@@ -637,10 +657,11 @@ server <- function(input, output, session) {
     # EDA Plots
     observeEvent(input$plot, {
         output$edaPlot <- renderPlot({
-            selected_bldg <- pretty_building_names[input$eda_building]
-            selected_var <- pretty_variable_names[input$variable]
-            start_date <- as.Date(input$time_period[1], origin="1970-01-01")
-            end_date <- as.Date(input$time_period[2], origin="1970-01-01")
+          selected_var <- input$variable  # Use the original column name for plotting
+          pretty_var <- pretty_variable_names[selected_var]  # Get the pretty name for labels
+          selected_bldg <- pretty_building_names[input$eda_building]
+          start_date <- as.Date(input$time_period[1], origin="1970-01-01")
+          end_date <- as.Date(input$time_period[2], origin="1970-01-01")
             
             plot_df <- df %>% 
                 filter(bldg_name == input$eda_building, date >= start_date & date <= end_date)
@@ -682,9 +703,9 @@ server <- function(input, output, session) {
                       legend.text = element_text(size = 13))+
                     scale_color_manual(values = colors_to_use)
             } else {
-                ggplot(plot_df, aes_string(x = "date", y = input$variable)) +
+                ggplot(plot_df, aes(x = date, y = .data[[selected_var]])) + #aes_string(x = "date", y = input$variable)) +
                   geom_line(color = "#373737", alpha = .8) +  # Set specific color for lines
-                  labs(x = "Date", y = selected_var) +
+                  labs(x = "Date", y = pretty_var) +
                   theme_minimal() +
                   theme(axis.title = element_text(size = 15),  
                         axis.text = element_text(size = 13),   
