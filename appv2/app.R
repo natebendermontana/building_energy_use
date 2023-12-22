@@ -43,13 +43,17 @@ potential_forecast_window_end <- forecast_static_min + potential_forecast_window
 # Func: Energy Prices ########################################
 # ************************************************************
 generate_energyprices <- function(df, total_dates, potential_total_length, useradjust_energyprices) {
-  current_price <- 0.225 # Initial average price
+  # Get the latest price from historical data
+  current_price <- df %>%
+    filter(date == max(date)) %>%
+    pull(price_per_kwh)
   
   # Calculate the percentage adjustment from the user input
   pcnt_adjustment <- 1 + (useradjust_energyprices / 100)
   
-  # Create a vector to store future energy price data
-  future_energy_prices <- numeric(length = potential_total_length)
+  # Create a df to store future energy price data and dates for filtering later on
+  # "ds" aligns with the existing filtering code used for the prophet model
+  future_energy_prices <- data.frame(ds = total_dates, price_per_kwh = numeric(length = potential_total_length))
   
   for (i in 1:potential_total_length) {
     # Apply a very small daily change to simulate long-term trends
@@ -67,7 +71,7 @@ generate_energyprices <- function(df, total_dates, potential_total_length, usera
     
     # Calculate the new price with tightened constraints and user adjustment
     new_price <- max(0.10, min(0.50, (current_price + yearly_trend + daily_change + event_change) * pcnt_adjustment))
-    future_energy_prices[i] <- new_price
+    future_energy_prices$price_per_kwh[i] <- new_price
     
     # Update the current price for the next day
     current_price <- new_price
@@ -76,13 +80,15 @@ generate_energyprices <- function(df, total_dates, potential_total_length, usera
   return(future_energy_prices)
 }
 
-
-forecast_window_start <- as.Date("2024-01-01", tz = "UTC")
-forecast_window_end <- as.Date("2024-12-31", tz = "UTC")
-total_dates <- seq.Date(forecast_static_min, potential_forecast_window_end, by = "day")
-potential_total_length <- length(total_dates)
-
-test_prices <- generate_energyprices(df, total_dates, potential_total_length, useradjust_energyprices=0)
+# forecast_static_min <- max(df$date)+1 # possible predictions start at latest historical day +1
+# potential_forecast_window <- 365*3 # can forecast up to three years beyond the day after the latest historical date
+# potential_forecast_window_end <- forecast_static_min + potential_forecast_window
+# 
+# forecast_window_start <- as.Date("2024-01-01", tz = "UTC")
+# forecast_window_end <- as.Date("2024-12-31", tz = "UTC")
+# total_dates <- seq.Date(forecast_static_min, potential_forecast_window_end, by = "day")
+# potential_total_length <- length(total_dates)
+# test_prices <- generate_energyprices(df, total_dates, potential_total_length, useradjust_energyprices=0)
   
 
 # ************************************************************
@@ -858,6 +864,7 @@ server <- function(input, output, session) {
             # Filter the full scenario to only include the selected date range
             filtered_scenario <- future_full_preds %>%
                 filter(ds >= forecast_window_start & ds <= forecast_window_end)
+          
             
             hide('dygraph_spinner')
             
@@ -869,6 +876,7 @@ server <- function(input, output, session) {
             output$energy_totals <- renderUI({
           # Only proceed if the scenario data is available and the model has run
             total_energy_use <- sum(filtered_scenario$yhat)
+            print(paste("total energy use: ", total_energy_use))
             
             infoBox(
               title = "Predicted KWh",
@@ -883,15 +891,27 @@ server <- function(input, output, session) {
               # Only proceed if the scenario data is available and the model has run
               if (!is.null(filtered_scenario)) {
                 # Ensure that 'price_per_kwh' vector is of the same length as 'filtered_scenario$yhat'
-                price_per_kwh <- generate_energyprices(df, total_dates, potential_total_length, input$useradjust_energyprices) # generate full simulations in order to filter as needed later
+                prices_df <- generate_energyprices(df, total_dates, potential_total_length, input$useradjust_energyprices) # generate full simulations in order to filter as needed later
+                # print(paste("prices_df dates: ", head(prices_df$ds)))
+                # print(paste("prices_df price: ", head(prices_df$price_per_kwh)))
+                # print(min(prices_df$ds))
+                # print(max(prices_df$ds))
                 
-                filtered_price <- price_per_kwh %>%
+                filtered_prices <- prices_df %>%
                   filter(ds >= forecast_window_start & ds <= forecast_window_end)
+                
+                print("FORECAST: filtered prices dates:")
+                print(min(filtered_prices$ds))
+                print(max(filtered_prices$ds))
+                
+                print("FORECAST: filtered prices first five prices:")
+                print(filtered_prices$price_per_kwh[0:5])
+
                 
                 #price_per_kwh <- price_per_kwh[1:length(filtered_scenario$yhat)]
                 
                 # Calculate the total predicted energy usage multiplied by the price for each day
-                filtered_energy_cost <- sum(filtered_scenario$yhat * filtered_price) #row-wise cost calc
+                filtered_energy_cost <- sum(filtered_scenario$yhat * filtered_prices$price_per_kwh) #row-wise cost calc
                 
                 # Display the total cost in dollar units, with thousands separators and 2 decimal places
                 infoBox(
@@ -913,23 +933,17 @@ server <- function(input, output, session) {
           # Start here - get the baseline predictions to work #   
           #  Need to work on getting the prices output as a dataframe with dates and prices, so they can be filtered by date later on. They don't need
           #  to be a vector like the other userinputs because they're not going into prophet as future regressors. 
-          #####################################################################################
-          #####################################################################################
-          #####################################################################################
-          #####################################################################################
-          #####################################################################################
-          #####################################################################################
 
 
-            # Create future dataframe
+            # Create future dataframe using same prophet model
             base_future_full <- make_future_dataframe(m, periods = potential_forecast_window) # "potential_forecast_window" is the maximum length of possible future forecasts.
 
             if (!is.null(input$scenario_range) && length(input$scenario_range) == 2) { # leave these as "scenario_range"
-              forecast_window_start <- as.Date(input$scenario_range[1], tz = "UTC")
-              forecast_window_end <- as.Date(input$scenario_range[2], tz = "UTC")
+#              forecast_window_start <- as.Date(input$scenario_range[1], tz = "UTC")
+#              forecast_window_end <- as.Date(input$scenario_range[2], tz = "UTC")
 
-              total_dates <- seq.Date(forecast_static_min, potential_forecast_window_end, by = "day")
-              potential_total_length <- length(total_dates)
+#              total_dates <- seq.Date(forecast_static_min, potential_forecast_window_end, by = "day")
+#              potential_total_length <- length(total_dates)
 
               base_future_full <- add_future_regressor(
                 df = df,
@@ -967,38 +981,40 @@ server <- function(input, output, session) {
 
               # Make predictions
               base_future_full_preds <- predict(m, base_future_full)
-
               base_future_full_preds <- base_future_full_preds %>%
                 mutate(ds = with_tz(ds, tzone = "UTC")) # match time zones to avoid error messages
 
               # Filter the full scenario to only include the selected date range
-              filtered_scenario <- base_future_full_preds %>%
+              base_filtered_scenario <- base_future_full_preds %>%
                 filter(ds >= forecast_window_start & ds <= forecast_window_end)
             }
+            
+            base_prices_df <- generate_energyprices(df, total_dates, potential_total_length, input$useradjust_energyprices) # generate full simulations in order to filter as needed later
+            # print(paste("prices_df dates: ", head(prices_df$ds)))
+            # print(paste("prices_df price: ", head(prices_df$price_per_kwh)))
+            
+            base_filtered_prices <- base_prices_df %>%
+              filter(ds >= forecast_window_start & ds <= forecast_window_end)
+            
+            print("BASELINE: filtered prices dates:")
+            print(min(base_filtered_prices$ds))
+            print(max(base_filtered_prices$ds))
+            
+            print("BASELINE: filtered prices first five prices:")
+            print(base_filtered_prices$price_per_kwh[0:5])
+            
+            # Calculate the total predicted energy usage multiplied by the price for each day
+            base_filtered_energy_cost <- sum(base_filtered_scenario$yhat * base_filtered_prices$price_per_kwh) #row-wise cost calc
 
-              output$base_cost <- renderUI({
-                # Only proceed if the scenario data is available and the model has run
-                if (!is.null(filtered_scenario)) {
-                  # Ensure that 'price_per_kwh' vector is of the same length as 'filtered_scenario$yhat'
-                  price_per_kwh <- generate_energyprices(df, total_dates, potential_total_length, useradjust_energyprices = 0)
-                  
-                  filtered_price <- price_per_kwh %>%
-                    filter(ds >= forecast_window_start & ds <= forecast_window_end)
-                  
-                  #price_per_kwh <- price_per_kwh[1:length(filtered_scenario$yhat)]
-
-                  # Calculate the total predicted energy usage multiplied by the price for each day
-                  filtered_energy_cost <- sum(filtered_scenario$yhat * filtered_price) #row-wise cost calc
-
-                  # Display the total cost in dollar units, with thousands separators and 2 decimal places
-                  infoBox(
-                    title = "Baseline Cost",
-                    value = scales::dollar_format(suffix = "", big.mark = ",", decimal.mark = ".")(filtered_energy_cost),
-                    icon = icon("dollar-sign"),
-                    color = "green",
-                    fill = TRUE
-                  )
-                }
+            output$base_cost <- renderUI({
+                # Display the total cost in dollar units, with thousands separators and 2 decimal places
+                infoBox(
+                  title = "Baseline Cost",
+                  value = scales::dollar_format(suffix = "", big.mark = ",", decimal.mark = ".")(base_filtered_energy_cost),
+                  icon = icon("dollar-sign"),
+                  color = "green",
+                  fill = TRUE
+                )
               })
     })
     
