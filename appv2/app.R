@@ -469,24 +469,18 @@ dashboardPage(
                             )
                         )
                     ),
-                    # original UI
-                    # hidden(div(id = 'scenario_plotdiv', 
-                    #     withSpinner(dygraphOutput("scenario_plot"), id = "dygraph_spinner"),
-                    #     withSpinner(verbatimTextOutput("scenario_details"), id = "dygraph_spinner"))) 
                     # new Layout
-                    hidden(
+                    fluidRow(column(4, uiOutput("energy_totals")),
+                             column(4, uiOutput("forecast_cost")),
+                             column(4, uiOutput("base_cost"))
+                    ),
+                    fluidRow(hidden(
                       div(id = 'scenario_plotdiv',
                           fluidRow(
                             column(width = 12,
                                    withSpinner(dygraphOutput("scenario_plot"), id = "dygraph_spinner")
                             )
-                          ))),
-                    fluidRow(column(12,
-                                    uiOutput("energy_totals")),
-                             (column(12,
-                                     uiOutput("forecast_cost"))),
-                             (column(12,
-                                     uiOutput("base_cost")))),
+                          ))))
             )
         )
     )
@@ -686,9 +680,12 @@ server <- function(input, output, session) {
                                   formatC(overall_max, format = "f", digits = 2))   
       
         # Determine icon and color based on pct_change
-        icon_color_up <- "#00cb21"  # A custom green color (you can use hex codes)
-        icon_color_down <- "#ff6969"  # A custom red color
-        icon_color_equal <- "#bababa"  # A custom blue color for 'equals'
+        # icon_color_up <- "#00cb21"  # A custom green color (you can use hex codes)
+        # icon_color_down <- "#ff6969"  # A custom red color
+        # icon_color_equal <- "#bababa"  # A custom blue color for 'equals'
+        icon_color_up <- "white"  # A custom green color (you can use hex codes)
+        icon_color_down <- "white"  # A custom red color
+        icon_color_equal <- "white"  # A custom blue color for 'equals'
         
         icon_name <- ifelse(pct_change > 0, "chevron-up", ifelse(pct_change < 0, "chevron-down", "equals"))
         icon_color <- ifelse(pct_change > 0, icon_color_up, ifelse(pct_change < 0, icon_color_down, icon_color_equal))
@@ -776,7 +773,6 @@ server <- function(input, output, session) {
         })
     }, ignoreNULL = FALSE)
   
-    
 # Server code for Scenario Planning - run the full simulations
     observeEvent(input$run_scenario, {
       
@@ -791,6 +787,7 @@ server <- function(input, output, session) {
             rename(ds = date, y = total) %>% 
             mutate(ds = with_tz(ds, tzone = "UTC")) 
         
+        set.seed(12923) # set seed again for consistency
         
         # Create a Prophet model
         m <- prophet(interval.width = .8) # .8 is the default confidence interval 
@@ -821,6 +818,7 @@ server <- function(input, output, session) {
             sd_factor_weekday <- c(nakatomi = 10, wayne_manor = -69, budapest = -7)
             sd_factor_weekend <- c(nakatomi = 10, wayne_manor = -29, budapest = -7)
             
+            set.seed(12923)
             future_full <- add_future_regressor(
                 df = df,
                 future_df = future_full,
@@ -834,6 +832,7 @@ server <- function(input, output, session) {
                                                    useradjust_sqft_per_person = input$useradjust_sqft_per_person)
             )
             
+            set.seed(12923)
             future_full <- add_future_regressor(
                 df = df,
                 future_df = future_full,
@@ -844,6 +843,7 @@ server <- function(input, output, session) {
                                                            useradjust_hvac_efficiency = input$useradjust_hvac_efficiency)
             )
             
+            set.seed(12923)
             future_full <- add_future_regressor(
                 df = df,
                 future_df = future_full,
@@ -864,87 +864,38 @@ server <- function(input, output, session) {
             # Filter the full scenario to only include the selected date range
             filtered_scenario <- future_full_preds %>%
                 filter(ds >= forecast_window_start & ds <= forecast_window_end)
-          
             
-            hide('dygraph_spinner')
             
-            output$scenario_plot <- renderDygraph({
-              dyplot.prophet(m, filtered_scenario)
-            })
+            # Ensure that 'price_per_kwh' vector is of the same length as 'filtered_scenario$yhat'
+            set.seed(12923)
+            prices_df <- generate_energyprices(df, total_dates, potential_total_length, input$useradjust_energyprices) # generate full simulations in order to filter as needed later
+            # print(paste("prices_df dates: ", head(prices_df$ds)))
+            # print(paste("prices_df price: ", head(prices_df$price_per_kwh)))
+            # print(min(prices_df$ds))
+            # print(max(prices_df$ds))
+            
+            filtered_prices <- prices_df %>%
+              filter(ds >= forecast_window_start & ds <= forecast_window_end)
+            
+            # print("FORECAST: filtered prices dates:")
+            # print(min(filtered_prices$ds))
+            # print(max(filtered_prices$ds))
+            
+            print("FORECAST: filtered prices first five prices:")
+            print(filtered_prices$price_per_kwh[0:5])
+            # Calculate the total predicted energy usage multiplied by the price for each day
+            forecast_energy_cost <- sum(filtered_scenario$yhat * filtered_prices$price_per_kwh) #row-wise cost calc
+            forecast_total_cost <- sum(forecast_energy_cost + input$useradjust_hvac_efficiency + input$useradjust_equip_efficiency)
         }
-       
-            output$energy_totals <- renderUI({
-          # Only proceed if the scenario data is available and the model has run
-            total_energy_use <- sum(filtered_scenario$yhat)
-            print(paste("total energy use: ", total_energy_use))
-            
-            infoBox(
-              title = "Predicted KWh",
-              value = comma(round(total_energy_use, 2)),
-              icon = icon("bolt"),
-              color = "blue",
-              fill = TRUE
-            )
-        }) 
-            
-            output$forecast_cost <- renderUI({
-              # Only proceed if the scenario data is available and the model has run
-              if (!is.null(filtered_scenario)) {
-                # Ensure that 'price_per_kwh' vector is of the same length as 'filtered_scenario$yhat'
-                prices_df <- generate_energyprices(df, total_dates, potential_total_length, input$useradjust_energyprices) # generate full simulations in order to filter as needed later
-                # print(paste("prices_df dates: ", head(prices_df$ds)))
-                # print(paste("prices_df price: ", head(prices_df$price_per_kwh)))
-                # print(min(prices_df$ds))
-                # print(max(prices_df$ds))
-                
-                filtered_prices <- prices_df %>%
-                  filter(ds >= forecast_window_start & ds <= forecast_window_end)
-                
-                print("FORECAST: filtered prices dates:")
-                print(min(filtered_prices$ds))
-                print(max(filtered_prices$ds))
-                
-                print("FORECAST: filtered prices first five prices:")
-                print(filtered_prices$price_per_kwh[0:5])
-
-                
-                #price_per_kwh <- price_per_kwh[1:length(filtered_scenario$yhat)]
-                
-                # Calculate the total predicted energy usage multiplied by the price for each day
-                filtered_energy_cost <- sum(filtered_scenario$yhat * filtered_prices$price_per_kwh) #row-wise cost calc
-                
-                # Display the total cost in dollar units, with thousands separators and 2 decimal places
-                infoBox(
-                  title = "Predicted Cost",
-                  value = scales::dollar_format(suffix = "", big.mark = ",", decimal.mark = ".")(filtered_energy_cost),
-                  icon = icon("dollar-sign"),
-                  color = "green",
-                  fill = TRUE
-                )
-              }
-            })    
           
-          # BASELINE MODEL 
-          #####################################################################################
-          #####################################################################################
-          #####################################################################################
-          #####################################################################################
-          ##################################################################################### 
-          # Start here - get the baseline predictions to work #   
-          #  Need to work on getting the prices output as a dataframe with dates and prices, so they can be filtered by date later on. They don't need
-          #  to be a vector like the other userinputs because they're not going into prophet as future regressors. 
-
+# BASELINE MODEL #####################################################################################
 
             # Create future dataframe using same prophet model
             base_future_full <- make_future_dataframe(m, periods = potential_forecast_window) # "potential_forecast_window" is the maximum length of possible future forecasts.
 
             if (!is.null(input$scenario_range) && length(input$scenario_range) == 2) { # leave these as "scenario_range"
-#              forecast_window_start <- as.Date(input$scenario_range[1], tz = "UTC")
-#              forecast_window_end <- as.Date(input$scenario_range[2], tz = "UTC")
-
-#              total_dates <- seq.Date(forecast_static_min, potential_forecast_window_end, by = "day")
-#              potential_total_length <- length(total_dates)
-
+              
+              set.seed(12923)
               base_future_full <- add_future_regressor(
                 df = df,
                 future_df = base_future_full,
@@ -957,7 +908,8 @@ server <- function(input, output, session) {
                                                            sd_factor_weekday, sd_factor_weekend,
                                                            useradjust_sqft_per_person = 0)
               )
-
+              
+              set.seed(12923)
               base_future_full <- add_future_regressor(
                 df = df,
                 future_df = base_future_full,
@@ -967,7 +919,8 @@ server <- function(input, output, session) {
                                                            total_dates, potential_forecast_window,
                                                            useradjust_hvac_efficiency = 0)
               )
-
+              
+              set.seed(12923)
               base_future_full <- add_future_regressor(
                 df = df,
                 future_df = base_future_full,
@@ -988,17 +941,11 @@ server <- function(input, output, session) {
               base_filtered_scenario <- base_future_full_preds %>%
                 filter(ds >= forecast_window_start & ds <= forecast_window_end)
             }
-            
-            base_prices_df <- generate_energyprices(df, total_dates, potential_total_length, input$useradjust_energyprices) # generate full simulations in order to filter as needed later
-            # print(paste("prices_df dates: ", head(prices_df$ds)))
-            # print(paste("prices_df price: ", head(prices_df$price_per_kwh)))
+            set.seed(12923)
+            base_prices_df <- generate_energyprices(df, total_dates, potential_total_length, useradjust_energyprices = 0) # generate full simulations in order to filter as needed later
             
             base_filtered_prices <- base_prices_df %>%
               filter(ds >= forecast_window_start & ds <= forecast_window_end)
-            
-            print("BASELINE: filtered prices dates:")
-            print(min(base_filtered_prices$ds))
-            print(max(base_filtered_prices$ds))
             
             print("BASELINE: filtered prices first five prices:")
             print(base_filtered_prices$price_per_kwh[0:5])
@@ -1006,6 +953,55 @@ server <- function(input, output, session) {
             # Calculate the total predicted energy usage multiplied by the price for each day
             base_filtered_energy_cost <- sum(base_filtered_scenario$yhat * base_filtered_prices$price_per_kwh) #row-wise cost calc
 
+# OUTPUTS #
+            output$energy_totals <- renderUI({
+              # Only proceed if the scenario data is available and the model has run
+              total_energy_use <- sum(filtered_scenario$yhat)
+              print(paste("total energy use: ", total_energy_use))
+              
+              infoBox(
+                title = "Predicted KWh",
+                value = comma(round(total_energy_use, 2)),
+                icon = icon("bolt"),
+                color = "blue",
+                fill = TRUE,
+                width = 12
+              )
+            }) 
+            
+            output$forecast_cost <- renderUI({
+              # dynamic color and subtitle text
+              cost_diff <- forecast_total_cost - base_filtered_energy_cost
+              subtitle_text <- if (cost_diff > 0) {
+                paste(scales::dollar_format()(cost_diff), "more than baseline")
+              } else if (cost_diff < 0) {
+                paste(scales::dollar_format()(abs(cost_diff)), "less than baseline")
+              } else {
+                NULL # No subtitle when they're equal
+              }
+              
+              # Determine the color based on the cost difference
+              box_color <- if (cost_diff > 0) {
+                "red"
+              } else if (cost_diff < 0) {
+                "green"
+              } else {
+                "black"
+              }
+              
+              
+              # Display the total cost in dollar units, with thousands separators and 2 decimal places
+              infoBox(
+                title = "Predicted Cost",
+                value = scales::dollar_format(suffix = "", big.mark = ",", decimal.mark = ".")(forecast_total_cost),
+                subtitle = subtitle_text,
+                icon = icon("dollar-sign"),
+                color = box_color,
+                fill = TRUE,
+                width = 12
+              )
+            })
+            
             output$base_cost <- renderUI({
                 # Display the total cost in dollar units, with thousands separators and 2 decimal places
                 infoBox(
@@ -1013,9 +1009,16 @@ server <- function(input, output, session) {
                   value = scales::dollar_format(suffix = "", big.mark = ",", decimal.mark = ".")(base_filtered_energy_cost),
                   icon = icon("dollar-sign"),
                   color = "green",
-                  fill = TRUE
+                  fill = TRUE,
+                  width = 12
                 )
               })
+            
+            hide('dygraph_spinner')
+            
+            output$scenario_plot <- renderDygraph({
+              dyplot.prophet(m, filtered_scenario)
+            })
     })
     
 } # closes server
