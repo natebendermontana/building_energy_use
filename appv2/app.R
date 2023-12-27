@@ -4,6 +4,7 @@ library(dplyr)
 library(ggplot2)
 library(lubridate)
 library(scales)
+library(tictoc)
 # prophet modeling
 library(prophet)
 library(dygraphs)
@@ -107,17 +108,17 @@ generate_sqft_per_person <- function(df, pred_building, total_dates, potential_t
   weekdays <- ifelse(lubridate::wday(total_dates) %in% c(1, 7), 0, 1) # 0 for weekend, 1 for weekday
   num_ppl_raw <- numeric(length = potential_total_length)
   sqft_per_person <- numeric(length = potential_total_length)
-  pcnt_adjustment = 1 + (useradjust_sqft_per_person / 100)
+  pcnt_adjustment = 1 - (useradjust_sqft_per_person / 100)
     
     for (i in 1:(potential_total_length)) {
         if (weekdays[i] == 1) {
             # Generate more people on weekdays
-            mean_factor <- 300 + mean_factor_weekday[pred_building]*pcnt_adjustment
+            mean_factor <- (300 + mean_factor_weekday[pred_building]) * pcnt_adjustment
             scale_factor <- 5 + scale_factor_weekday[pred_building]
             sd_factor <- 20 + sd_factor_weekday[pred_building]   
         } else {
             # Generate fewer people on weekends
-            mean_factor <- 70 + mean_factor_weekend[pred_building]*pcnt_adjustment
+            mean_factor <- (70 + mean_factor_weekend[pred_building]) * pcnt_adjustment
             scale_factor <- 5 + scale_factor_weekend[pred_building]
             sd_factor <- 10 + sd_factor_weekend[pred_building]   
         }
@@ -138,8 +139,11 @@ generate_sqft_per_person <- function(df, pred_building, total_dates, potential_t
 # Function to generate HVAC efficiency
 generate_hvac_efficiency <- function(df, pred_building, total_dates, potential_total_length, useradjust_hvac_efficiency) {
     # Conversion factor (Efficiency increase per $1,000)
-    efficiency_per_thousand = 0.0015
-    # Total efficiency increase based on user investment
+    #efficiency_per_thousand = 0.005
+    efficiency_per_thousand = 0.25
+  
+  
+  # Total efficiency increase based on user investment
     total_efficiency_change = useradjust_hvac_efficiency * efficiency_per_thousand / 1000
     
     # Get the latest HVAC efficiency from historical data
@@ -178,8 +182,10 @@ generate_hvac_efficiency <- function(df, pred_building, total_dates, potential_t
 # Function to generate the equipment efficiency rating
 generate_equip_efficiency <- function(df, pred_building, total_dates, potential_total_length, useradjust_equip_efficiency) {
     # Conversion factor (Efficiency increase per $1,000)
-    efficiency_per_thousand = 0.001
-    # Total efficiency increase based on user investment
+    #efficiency_per_thousand = 0.003
+    efficiency_per_thousand = 0.15
+  
+  # Total efficiency increase based on user investment
     total_efficiency_change = useradjust_equip_efficiency * efficiency_per_thousand / 1000
     
     # Get the latest HVAC efficiency from historical data
@@ -414,7 +420,7 @@ dashboardPage(
                                 ),
                                 column(8, 
                                        introBox(
-                                           sliderInput("scenario_range", "Dates to Forecast",
+                                           sliderInput("scenario_range", "Forecast Dates",
                                                        min = min(df$date),
                                                        max = max(df$date) + potential_forecast_window,
                                                        value = c(min(df$date),
@@ -430,7 +436,7 @@ dashboardPage(
                             fluidRow(
                                 column(4,
                                        introBox(
-                                           sliderInput("useradjust_sqft_per_person", "Percent adjustment: Square Feet Per Person",
+                                           sliderInput("useradjust_sqft_per_person", "Percent Adjustment: Square Feet Per Person",
                                                        min = -100, max = 100, value = 0, post = "%"),
                                            data.step = 10,
                                            data.intro = "Do you expect more or fewer people in this building in the future? This slider adjusts the *distribution* of people upwards or downwards by a percentage.
@@ -457,11 +463,16 @@ dashboardPage(
                                      ))
                             ),
                             fluidRow(
-                              column(6,
-                                     sliderInput("useradjust_energyprices", "Percent adjustment: Price per KWh",
+                              column(4,
+                                     sliderInput("useradjust_energyprices", "Percent Adjustment: Price Per KWh",
                                                  min = -100, max = 100, value = 0, post = "%")
                               ),
-                              column(6,
+                              column(4,
+                                     actionButton("reset_button", "Reset",
+                                                  style = 'color: #ffffff; background-color: #bababa; border-color: #bababa; 
+                                                                font-size: 110%; margin-top: 20px;')
+                              ),
+                              column(4,
                                        actionButton("run_scenario", "Run Scenario",
                                        style = 'color: #ffffff; background-color: #155974; border-color: #155974; 
                                                                 font-size: 110%; margin-top: 20px;')
@@ -772,10 +783,20 @@ server <- function(input, output, session) {
             }
         })
     }, ignoreNULL = FALSE)
+    
+    observeEvent(input$reset_button, {
+      # Resetting sliders to their default values
+      updateSliderInput(session, "scenario_range", value = c(min(df$date), max(df$date) + potential_forecast_window))
+      updateSliderInput(session, "useradjust_sqft_per_person", value = 0)
+      updateSliderInput(session, "useradjust_equip_efficiency", value = 0)
+      updateSliderInput(session, "useradjust_hvac_efficiency", value = 0)
+      updateSliderInput(session, "useradjust_energyprices", value = 0)
+    })
   
 # Server code for Scenario Planning - run the full simulations
     observeEvent(input$run_scenario, {
       
+      tictoc::tic()
       output$scenario_plot <- renderUI({}) # render a blank plot
       output$scenario_details <- renderUI({}) # render a blank area
       shinyjs::show('scenario_plotdiv')
@@ -1008,7 +1029,7 @@ server <- function(input, output, session) {
                   title = "Baseline Cost",
                   value = scales::dollar_format(suffix = "", big.mark = ",", decimal.mark = ".")(base_filtered_energy_cost),
                   icon = icon("dollar-sign"),
-                  color = "green",
+                  color = "black",
                   fill = TRUE,
                   width = 12
                 )
@@ -1019,6 +1040,9 @@ server <- function(input, output, session) {
             output$scenario_plot <- renderDygraph({
               dyplot.prophet(m, filtered_scenario)
             })
+            
+            tictoc::toc()
+            
     })
     
 } # closes server
