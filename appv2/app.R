@@ -138,7 +138,7 @@ generate_sqft_per_person <- function(df, pred_building, total_dates, potential_t
 # Function to generate HVAC efficiency
 generate_hvac_efficiency <- function(df, pred_building, total_dates, potential_total_length, useradjust_hvac_efficiency) {
     # Conversion factor (Efficiency increase per $1,000)
-    efficiency_per_thousand = 0.001
+    efficiency_per_thousand = 0.0015
     # Total efficiency increase based on user investment
     total_efficiency_change = useradjust_hvac_efficiency * efficiency_per_thousand / 1000
     
