@@ -413,15 +413,29 @@ scenario_inputs <- list(
   tags$div(
     HTML('
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0px;">
-                <label for="useradjust_sqft_per_person" style="margin-right: 3px;">Investment: Equipment Efficiency</label>
+                <label for="useradjust_equip_efficiency" style="margin-right: 3px;">Investment: Equipment Efficiency</label>
                 <span id="scenario_useradj_equip_efficiency" class="help-icon" style="cursor: pointer;">?</span>
             </div>')
   ),
   sliderInput("useradjust_equip_efficiency", label = NULL,
               min = -100000, max = 100000, value = 0, step = 100, pre = "$"),
-  sliderInput("useradjust_hvac_efficiency", "Investment: HVAC Efficiency",
+  tags$div(
+    HTML('
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0px;">
+                <label for="useradjust_hvac_efficiency" style="margin-right: 3px;">Investment: HVAC Efficiency</label>
+                <span id="scenario_useradj_hvac_efficiency" class="help-icon" style="cursor: pointer;">?</span>
+            </div>')
+  ),
+  sliderInput("useradjust_hvac_efficiency", label = NULL,
               min = -100000, max = 100000, value = 0, step = 100, pre = "$"),
-  sliderInput("useradjust_energyprices", "Percent Adjustment: Price ($/KWh)",
+  tags$div(
+    HTML('
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0px;">
+                <label for="useradjust_energyprices" style="margin-right: 3px;">Percent Adjustment: Price ($/KWh)</label>
+                <span id="scenario_useradj_energyprices" class="help-icon" style="cursor: pointer;">?</span>
+            </div>')
+  ),
+  sliderInput("useradjust_energyprices", label = NULL,
               min = -100, max = 100, value = 0, post = "%"),
   actionButton("scenario_reset", "Reset"),
   actionButton("run_scenario", "Run Scenario")
@@ -669,8 +683,9 @@ server <- function(input, output, session) {
     shinyjs::onclick("scenario_dates_help", {
       showModal(modalDialog(
         title = "Scenario Forecast Range",
-        "You can ask the Prophet forecasting model to predict energy usage for any of the existing historical dates and/or up to three years into the future (predictions farther out are unreliable). 
-                Note that adjustments to any of the building characteristics below though will only apply to *future* predictions of those characteristics. The historical data remains unchanged under all scenarios.",
+        HTML("<style>em { margin-right: 2px; }</style>
+             You can ask the Prophet forecasting model to predict energy usage for any of the existing historical dates and/or up to three years into the future (predictions farther out are unreliable). 
+                Note that adjustments to any of the building characteristics below though will only apply to <strong><em>future</em></strong> predictions of those characteristics. The historical data remains unchanged under all scenarios."),
         easyClose = TRUE,
         footer = NULL
       ))})
@@ -681,26 +696,58 @@ server <- function(input, output, session) {
     shinyjs::onclick("scenario_useradj_sqftppl", {
       showModal(modalDialog(
         title = "Adjusted Square Footage Per Person",
-        "This adjusts the distribution of future daily predictions for square footage per person up or down by a percentage. 
-                The adjustment is general, not exact, because of randomness and probability statements built into the simulations. 
+        HTML("<style>em { margin-right: 2px; }</style>
+             This adjusts the <strong><em>distribution</em></strong> of future daily predictions for square footage per person up or down by a percentage. 
+                The adjustment is general, not exact, because of randomness and probability statements built into the simulations to model real-world variability. 
                 The predictions still follow their historical patterns, but each daily prediction takes into account the user-defined percentage adjustment. 
-                The historical data remains unchanged under all scenarios.",
+                The historical data remains unchanged under all scenarios."),
         easyClose = TRUE,
         footer = NULL
       ))})
   })
   
-  # Scenario - equip efficiency help button
   observe({
     shinyjs::onclick("scenario_useradj_equip_efficiency", {
       showModal(modalDialog(
         title = "Adjusted Equipment Efficiency Rating",
         HTML("<style>em { margin-right: 2px; }</style>
-                  This adjusts the future daily predictions for the plug-in equipment efficiency rating up or down.
-                  The ratio of investment to equipment rating is 0.15 change per $1000 — so for every $1k invested, the <em>investment</em> value in the rating simulation goes up by .15.<br><br>
-                  The rating's simulations are governed by several factors: a <em>yearly decline</em> constant that simulates age-related degradation; a <em>daily change</em> value that is most often static but occasionally fluctuates up or down by a small amount, representing slow, small changes in the aggregate efficiency of equipment inside the building; an <em>event change</em> value that very rarely introduces a large positive or negative change to the rating, representing infrequent major upgrades or breakdowns; and lastly the <em>investment</em> value.<br><br>
+             This adjusts the future daily predictions for the plug-in equipment efficiency rating up or down.
+                  The ratio of investment to equipment rating is 0.15 change per $1000 — so for every $1k invested, the investment value in the rating simulation goes up by .15.<br><br>
+                  The rating's simulations are governed by several factors: a <strong><em>yearly decline</em></strong> constant that simulates age-related degradation; a <strong><em>daily change</em></strong> value that is most often static but occasionally fluctuates up or down by a small amount, representing slow, small changes in the aggregate efficiency of equipment inside the building; an <strong><em>event change</em></strong> value that very rarely introduces a large positive or negative change to the rating, representing infrequent major upgrades or breakdowns; and lastly the <strong><em>investment</em></strong> value.<br><br>
                   The adjustment is general, not exact, because of randomness and probability statements built into the simulations.
                   The historical data remains unchanged under all scenarios."),
+        easyClose = TRUE,
+        footer = NULL
+      ))
+    })
+  })
+  
+  # Scenario - hvac efficiency help button
+  observe({
+    shinyjs::onclick("scenario_useradj_hvac_efficiency", {
+      showModal(modalDialog(
+        title = "Adjusted HVAC System Efficiency",
+        HTML("<style>em { margin-right: 2px; }</style>
+                  This adjusts the future daily predictions for the HVAC system efficiency rating up or down. The historical data remains unchanged under all scenarios.
+                  The ratio of investment to HVAC system rating is 0.25 change per $1000 — so for every $1k invested, the investment value in the rating simulation goes up by .25.<br><br>
+                  The rating's simulations are governed by several factors: a <strong><em>yearly decline</em></strong> constant that simulates age-related degradation; a <strong><em>daily change</em></strong> value that is most often static but occasionally fluctuates up or down by a small amount, representing slow, small changes in the aggregate efficiency of equipment inside the building; an <strong><em>event change</em></strong> value that very rarely introduces a large positive or negative change to the rating, representing infrequent major upgrades or breakdowns; and lastly the <strong><em>investment</em></strong> value.<br><br>
+                  The adjustment is general, not exact, because of randomness and probability statements built into the simulations to model real-world variability."),
+        easyClose = TRUE,
+        footer = NULL
+      ))
+    })
+  })
+  
+  # Scenario - energy prices help button
+  observe({
+    shinyjs::onclick("scenario_useradj_energyprices", {
+      showModal(modalDialog(
+        title = "Adjusted Energy Prices",
+        HTML("<style>em { margin-right: 2px; }</style>
+                This adjusts the <strong><em>distribution</em></strong> of future daily energy price predictions up or down by a percentage. 
+                The adjustment is general, not exact, because of randomness and probability statements built into the simulations to model real-world variability. 
+                The predictions still follow their historical patterns, but each daily prediction takes into account the user-defined percentage adjustment. 
+                The historical data remains unchanged under all scenarios."),
         easyClose = TRUE,
         footer = NULL
       ))
