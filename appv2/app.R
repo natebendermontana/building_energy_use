@@ -478,13 +478,20 @@ ui <- page_navbar(
         background-color: #ffffff; /* Light background */
         color: #333333; /* Dark text */
       }
+      .custom-tooltip-width {
+        max-width: 600px !important; /* Set desired maximum width */
+      }
       .introjs-tooltipReferenceLayer .introjs-arrow {
         /* Define color for the tooltip arrow */
         border-bottom-color: #ffffff; /* Match the tooltip background */
       }
-      /* Other IntroJS elements styling as needed */
     ')),
-    
+    tags$script(HTML("
+  $(document).on('shiny:connected', function() {
+    $('a[data-value=\"Energy Predictions\"]').attr('id', 'energy-predictions-tab');
+  });
+")),
+
     tags$style(HTML('
             .help-icon {
                 padding: 0 5px;
@@ -676,15 +683,36 @@ server <- function(input, output, session) {
   steps <- list(
     list(
       element = "#app-title",
-      intro = "Welcome to the Energy Insights Dashboard..."
+      intro = "Welcome to Energy Insights, a data exploration and prediction app for a trio of noteworthy fictional buildings: Nakatomi Plaza, Wayne Manor, and the Grand Budapest Hotel."
     ),
     list(
       element = "#data-exploration-tab",
-      intro = "In this app you can explore..."
+      intro = "In this app you can explore the unique characteristics and energy use patterns created from scratch for each building, predict future energy use based on historical patterns, and even run energy use predictions based on custom scenarios of where you control the building characteristics.
+      <br><br> First, use this Data Exploration tab to explore the fictional data with visualizations and accompanying text."
     ),
     list(
       element = "#scenario-planning-tab",
-      intro = "In the Scenario Planning section..."
+      intro = "Use the Scenario Planning tab for future planning and predictions based on custom parameters."
+    ),
+    list(
+      element = "#eda_building-label",
+      intro = "Each of the three buildings is set up with unique characteristics and usage patterns that affect its energy usage."
+    ),
+    list(
+      element = "#variable-label",
+      intro = "Choose a variable to see how it's been simulated for a particular building."
+    ),
+    list(
+      element = "#time_period-label",
+      intro = "Zoom in or out to a particular time frame."
+    ),
+    list(
+      element = "#energy-predictions-tab",
+      intro = "This tab allows you to view and analyze energy predictions."
+    ),
+    list(
+      element = "#start_tour",
+      intro = "Click here to start this tour again at any time."
     )
     # ... [other steps] ...
   )
@@ -706,29 +734,24 @@ server <- function(input, output, session) {
     )
   }
 
-  
   # Start the tour automatically on app load
   introjs(session, options = list(steps = steps, 
                                   nextLabel = "Next", 
                                   prevLabel = "Previous", 
-                                  skipLabel = "X"), 
+                                  skipLabel = "X",
+                                  tooltipClass = "custom-tooltip-width"), # Add custom tooltip class here
           events = get_tour_events())
   # and when the button is clicked
+  # Server code for starting the introjs tour
   observeEvent(input$start_tour, {
-    introjs(session, options = list(steps = steps))
-  })
-
-
-
-  observe({
-      introjs(session,
-              options = list("nextLabel" = "Next",
-                             "prevLabel" = "Previous",
-                             "skipLabel" = "X"),
-              events = get_tour_events()
-      )
+    introjs(session, 
+            options = list(steps = steps, 
+                           tooltipClass = "custom-tooltip-width")
+    )
   })
   
+  
+### Help Buttons ###  
   # Scenario - dates help button
   observe({
     shinyjs::onclick("scenario_dates_help", {
