@@ -17,7 +17,7 @@ library(bsicons)
 #library(shinydashboardPlus)
 #library(shinythemes)
 library(shinyjs)
-#library(rintrojs)
+library(rintrojs)
 library(shinycssloaders)
 library(shinyWidgets)
 
@@ -463,9 +463,28 @@ light <- bs_theme(
 # UI #########################################################################
 ui <- page_navbar(
   useShinyjs(),  # Initialize shinyjs
+  introjsUI(),  # Add this to use introjs in your UI
   theme = dark,
-  
+
   tags$head(
+    tags$style(HTML('
+      /* Custom CSS for IntroJS elements */
+      .introjs-overlay {
+        /* Define background color for the overlay */
+        background-color: rgba(0, 0, 0, 0.8); /* Adjust as needed */
+      }
+      .introjs-tooltip {
+        /* Define background and text color for the tooltip */
+        background-color: #ffffff; /* Light background */
+        color: #333333; /* Dark text */
+      }
+      .introjs-tooltipReferenceLayer .introjs-arrow {
+        /* Define color for the tooltip arrow */
+        border-bottom-color: #ffffff; /* Match the tooltip background */
+      }
+      /* Other IntroJS elements styling as needed */
+    ')),
+    
     tags$style(HTML('
             .help-icon {
                 padding: 0 5px;
@@ -498,6 +517,16 @@ ui <- page_navbar(
             }
         ")
   ),
+    tags$script(HTML("
+        $(document).on('shiny:connected', function() {
+          // Add ID to the main app title
+          $('.navbar-brand').first().attr('id', 'app-title');
+    
+          // Add IDs to sidebar items based on 'data-value'
+          $('a[data-value=\"Data Exploration\"]').attr('id', 'data-exploration-tab');
+          $('a[data-value=\"Scenario Planning\"]').attr('id', 'scenario-planning-tab');
+        });
+      ")),
   
   title = "Energy Insights Dashboard",
   # Removing the global sidebar, as each tab will have its own
@@ -644,39 +673,61 @@ server <- function(input, output, session) {
     }
   })
   
-  # COMMENT OUT FOR NOW UNTIL READY TO IMPLEMENT TOUR
-  # observe for starting tour when Start Tour button is clicked
-  # observeEvent(input$start_tour, {
-  #     introjs(session, 
-  #             events = get_tour_events()
-  #     )
-  # })
-  
+  steps <- list(
+    list(
+      element = "#app-title",
+      intro = "Welcome to the Energy Insights Dashboard..."
+    ),
+    list(
+      element = "#data-exploration-tab",
+      intro = "In this app you can explore..."
+    ),
+    list(
+      element = "#scenario-planning-tab",
+      intro = "In the Scenario Planning section..."
+    )
+    # ... [other steps] ...
+  )
+
   # Ensure the events list for the tour is the same no matter if the tour starts automatically or with the Start Tour button
-  # This events list switches from the EDA Plots tab to the Scenario tab at the right moment (currentStep>=10) in the tour. 
-  # get_tour_events <- function() {
-  #     list(
-  #         "onchange" = I("if (this._currentStep<7) {
-  #     $('a[data-value=\\\"scenario_planning\\\"]').removeClass('active');
-  #     $('a[data-value=\\\"eda_plots\\\"]').addClass('active');
-  #     $('a[data-value=\\\"eda_plots\\\"]').trigger('click');
-  #   }
-  #   if (this._currentStep>=7) {
-  #     $('a[data-value=\\\"eda_plots\\\"]').removeClass('active');
-  #     $('a[data-value=\\\"scenario_planning\\\"]').addClass('active');
-  #     $('a[data-value=\\\"scenario_planning\\\"]').trigger('click');
-  #   }")
-  #     )
-  # }
+  # This events list switches from the EDA Plots tab to the Scenario tab at the right moment (currentStep>=10) in the tour.
+  get_tour_events <- function() {
+    list(
+      "onchange" = I("if (this._currentStep<7) {
+      $('a[data-value=\\\"scenario_planning\\\"]').removeClass('active');
+      $('a[data-value=\\\"eda_plots\\\"]').addClass('active');
+      $('a[data-value=\\\"eda_plots\\\"]').trigger('click');
+    }
+    if (this._currentStep>=7) {
+      $('a[data-value=\\\"eda_plots\\\"]').removeClass('active');
+      $('a[data-value=\\\"scenario_planning\\\"]').addClass('active');
+      $('a[data-value=\\\"scenario_planning\\\"]').trigger('click');
+    }")
+    )
+  }
+
   
-  # observe({
-  #     introjs(session,
-  #             options = list("nextLabel" = "Next",
-  #                            "prevLabel" = "Previous",
-  #                            "skipLabel" = "X"),
-  #             events = get_tour_events()
-  #     )
-  # })
+  # Start the tour automatically on app load
+  introjs(session, options = list(steps = steps, 
+                                  nextLabel = "Next", 
+                                  prevLabel = "Previous", 
+                                  skipLabel = "X"), 
+          events = get_tour_events())
+  # and when the button is clicked
+  observeEvent(input$start_tour, {
+    introjs(session, options = list(steps = steps))
+  })
+
+
+
+  observe({
+      introjs(session,
+              options = list("nextLabel" = "Next",
+                             "prevLabel" = "Previous",
+                             "skipLabel" = "X"),
+              events = get_tour_events()
+      )
+  })
   
   # Scenario - dates help button
   observe({
