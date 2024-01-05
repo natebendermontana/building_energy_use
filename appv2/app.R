@@ -301,7 +301,7 @@ pretty_variable_names <- c(
   "bldg_area" = "Building Area (sqft)",
   "sqft_per_person" = "Square Feet Per Person",
   "num_ppl_raw" = "Number of People",
-  "temp" = "Temperature (F)", 
+  "temp" = "Temperature (°F)", 
   "wind_speed" = "Wind Speed (mph)", 
   "cloud_cover" = "Cloud Cover (%)", 
   "equip_efficiency" = "Equipment Efficiency Rating", 
@@ -366,7 +366,7 @@ getVariableDetails <- function(varName) {
 
 eda_vardetails <- list(
   sqft_per_person = HTML("<p>Square Feet Per Person is derived by dividing the total building area by the number of people estimated to be present.
-                         In Nakatomi Plaza, for instance, if the building area is 21,110 square feet and the estimated number of people on a given day is 500, then the square feet per person would be approximately 42.2 sqft/person.
+                         In Nakatomi Plaza, for instance, the building area is 21,110 square feet and if the estimated number of people on a given day is 500, then the square feet per person would be approximately 42.2 sqft/person.
                          This provides a picture of how spaciously or densely people are accommodated within the building.</p>"),
   num_ppl_raw = HTML("<p>For Number of People, I simulate the estimated number of people in a building for each day. 
                      For example, let's consider the Nakatomi Plaza on a typical weekday.
@@ -375,15 +375,41 @@ eda_vardetails <- list(
                      Next, the scale factor (which affects the shape and variability of the distribution of estimates) is considered. Starting from a base of 5 (relatively more variability), I add the building's scale factor for weekdays, which is 1 for Nakatomi Plaza, resulting in a total scale factor of 6. 
                      The standard deviation also plays a role; starting from a base of 70, I add Nakatomi Plaza's specific standard deviation factor for weekdays, 10, resulting in a standard deviation of 80.
                      The number of people is generated using a gamma distribution shaped by these factors, and modified by a normally distributed random number based on the calculated mean and standard deviation. 
-                     <br><br>This approach ensures a realistic, non-negative estimate that allows the simulations to take into account building-specific occupancy patterns via different means, standard deviations, and scale factors, and weekday/weekend variability.</p>"),
-  temp = HTML("<p>Details about Temperature (F)...</p>"),
-  wind_speed = HTML("<p>Details about Wind Speed (mph)...</p>"),
-  cloud_cover = HTML("<p>Details about Cloud Cover (%)...</p>"),
-  equip_efficiency = HTML("<p>Details about Equipment Efficiency Rating...</p>"),
-  hvac_efficiency = HTML("<p>Details about HVAC Efficiency Rating...</p>"),
-  bldg_area = HTML("<p>Details about Building Size (Sq Ft)...</p>"),
-  total = HTML("<p>Details about Total Energy Use (KWh)...</p>")
-  # Add more variables as needed
+                     <br><br>This approach ensures a realistic, non-negative estimate that allows the simulations to take into account building-specific occupancy patterns via different means, standard deviations, scale factors, and weekday/weekend variability.</p>"),
+  temp = HTML("<p>In simulating temperatures for a Seattle-like environment, our model captures the nuanced variations across the year, considering both seasonal trends and daily fluctuations.
+              Starting with Seattle’s average winter low of 37°F and summer high of 79°F, the model establishes a mean temperature and an amplitude to represent seasonal changes. The mean temperature, an average of the high and low, serves as the base, while the amplitude, half the difference between the high and low, reflects the extent of seasonal variation.</p>
+              A sine wave function is used to model the natural ebb and flow of temperatures, peaking in summer and dipping in winter. This cyclical pattern is a fundamental characteristic of temperate climates. Additionally, each building receives a unique temperature adjustment to account for microclimatic differences, such as urban heat islands or varying sun exposure.
+              To add realism, the model introduces random daily variations using a normal distribution with a standard deviation of 5°F. This randomness accounts for day-to-day weather changes, like unexpected rain or cloud cover.</p>
+              Each building’s daily temperature is then calculated by combining the base temperature, the sine wave adjustment, and the random variation, while ensuring the final values stay within a plausible range (0°F to 110°F).</p>"),
+  wind_speed = HTML("<p>Using Seattle again as the hypothetical location,I first establish average low and high wind speeds, at 3 mph and 7 mph, respectively. Using these values, I calculate a mean wind speed and an amplitude to represent the range of fluctuation.
+                    The simulation employs a sine wave function to model the natural seasonal variation of wind speed — which is minimal in a place like Seattle — with adjustments for each building. For example, a building in an open area might experience higher wind speeds. This is considered by adding a building-specific adjustment to the mean wind speed.</p>
+                    Further, to add a layer of randomness that mirrors daily weather variations, I introduce random noise using a normal distribution. The final wind speed for each building and each day is a combination of the base wind speed (shaped by the sine wave and building adjustment) and this random noise, constrained within a range of 0 to 40 mph.</p>"),
+  cloud_cover = HTML("<p>Cloud cover is simulated to reflect the typical pattern of clearer and cloudier periods throughout the year. Starting with an average range from 0% (clear skies) to 100% (completely overcast), I use these extremes to define a mean and amplitude.</p>
+                     A sine wave function, phase-shifted to align with the cloudiest and clearest months, models the cyclical nature of cloud cover. This function helps determine the percentage of cloud cover on any given day. Random variation is again introduced, this time to represent the unpredictable changes in cloud cover caused by transient weather systems.
+                     Finally, the calculated cloud cover percentage is adjusted to ensure it remains within the realistic bounds of 0% to 100%.</p>"),
+  equip_efficiency = HTML("
+<p><strong><em>Starting Efficiency and Simulation Structure:</em></strong> The simulation begins by assigning a random starting efficiency rating to each building between 40% and 100%. This initial efficiency reflects the variability in the energy efficiency of the plug-in equipment in each building.</p>
+<p><strong><em>Aging and Daily Variation:</em></strong> I apply a yearly decline in efficiency, simulated as a very small daily negative constant, to simulate natural efficiency decreases with age. This gradual decline mimics the wear and tear of equipment usage. Alongside aging, daily variations in equipment performance are also simulated. These variations are minor and represent the routine fluctuations in equipment efficiency due to factors like usage patterns or minor maintenance issues.</p>
+<p><strong><em>Random Significant Events:</em></strong> Real-world scenarios often include unpredictable events that can significantly impact equipment efficiency. To capture this, the simulation includes a .5% chance for a significant event each day, equating to approximately 1-2 times a year. These events can lead to a substantial increase or decrease in efficiency, representing scenarios like major equipment failures or upgrades.</p>
+<p><strong><em>Calculating and Updating Efficiency:</em></strong> For each day and each building, the new efficiency rating is calculated by combining the effects of aging, daily variation, and any significant events. This new rating is constrained within a realistic range of 1% to 100%, ensuring that efficiency never falls below a minimum threshold or exceeds the maximum. The current efficiency is then updated for the next day’s calculation.</p>
+<p>This simulation provides a nuanced portrayal of how building equipment efficiency evolves over time, influenced by a mix of gradual aging, daily fluctuations, and occasional significant events.</p>
+"),
+hvac_efficiency = HTML("
+<p><strong><em>Starting HVAC Efficiency and Simulation Structure:</em></strong> The simulation initiates by assigning each building a random starting HVAC efficiency rating, ranging from 40% to 100%.</p>
+<p><strong><em>Aging and Daily Variation:</em></strong> I incorporate a yearly decline in HVAC efficiency, represented as a small daily negative constant, to simulate efficiency decreases due to aging. This decline mimics the gradual wear and tear on HVAC systems over time. Additionally, daily variations in HVAC performance are simulated to reflect the routine efficiency fluctuations caused by daily operational factors or minor maintenance issues.</p>
+<p><strong><em>Random Significant Events:</em></strong> Acknowledging the unpredictability of real-world scenarios, the simulation includes a 0.4% chance for a significant event affecting HVAC efficiency each day, translating to roughly 1-2 times a year. These events, which can either increase or decrease efficiency significantly, simulate occurrences such as major system malfunctions or significant maintenance and upgrades.</p>
+<p><strong><em>Calculating and Updating Efficiency:</em></strong> Each day, for every building, the new HVAC efficiency rating is computed by aggregating the effects of aging, daily variation, and any significant events. The calculated efficiency is kept within a realistic boundary of 1% to 100%, ensuring the ratings remain within plausible limits. The HVAC efficiency for the subsequent day is then updated based on this new calculation.</p>
+<p>This simulation offers a detailed portrayal of the evolving efficiency of HVAC systems in buildings over time. It captures the blend of gradual aging, daily operational fluctuations, and occasional significant events that impact system performance.</p>
+"),
+bldg_area = HTML("<p>Building Area is static for each building.</p>
+                 <p>Nakatomi Plaza: 21,110 sqft</p>
+                 <p>Wayne Manor: 7,260 sqft</p>
+                 <p>Grand Budapest Hotel: 15,200 sqft</p>"),
+total = HTML("
+<p><strong><em>Total Energy Use Simulation:</em></strong> I use a linear regression model to calculate the total energy use, with each factor assigned a specific coefficient reflecting its impact on energy consumption.</p>
+<p><strong><em>Contributing Factors and Coefficients:</em></strong> The model considers several key elements: building area, square feet per person, HVAC efficiency, equipment efficiency, temperature, wind speed, and cloud cover. Each of these factors is assigned a coefficient. For instance, building area has a coefficient of 0.05, signifying a moderate impact on energy use, whereas HVAC and equipment efficiencies have higher negative coefficients (-2 and -2.2 respectively), indicating their substantial influence in reducing energy consumption. Conversely, factors like temperature, with a coefficient of 1.1, significantly increase energy use, reflecting the need for more heating or cooling depending on the temperature.</p>
+<p><strong><em>Calculation of Total Energy Use:</em></strong> The total energy use for each day and each building is computed by multiplying the value of each factor by its corresponding coefficient and summing these up. This method ensures that the total energy use is a realistic representation of various contributing factors. Additionally, to account for daily variations and unforeseen circumstances, random noise is added to the model. This noise is based on a normal distribution with a mean of 10 and a standard deviation of 5, introducing variability to reflect day-to-day fluctuations in energy consumption.</p>
+")
 )
 
 
@@ -395,7 +421,7 @@ eda_inputs <- list(
   selectInput("variable", "Variable",
               choices = c("Square Feet Per Person" = "sqft_per_person",
                           "Number of People" = "num_ppl_raw",
-                          "Temperature (F)" = "temp",
+                          "Temperature (°F)" = "temp",
                           "Wind Speed (mph)" = "wind_speed",
                           "Cloud Cover (%)" = "cloud_cover",
                           "Equipment Efficiency Rating" = "equip_efficiency",
@@ -732,6 +758,13 @@ server <- function(input, output, session) {
       intro = "Welcome to Energy Insights, a data exploration and prediction app for a trio of noteworthy fictional buildings: Nakatomi Plaza, Wayne Manor, and the Grand Budapest Hotel."
     ),
     list(
+      element = "#app-title",
+      intro = HTML("<style>em { margin-right: 2px; }</style>
+                   This is a portfolio project with X main goals:
+                   <p><strong><em> Goal 1<p></strong></em>
+                   .")
+    ),
+    list(
       element = "#data-exploration-tab",
       intro = "In this app you can explore the unique characteristics and energy use patterns created for each building, predict future energy use based on historical patterns, and even run energy use predictions based on custom scenarios where you control the building characteristics.
       <br><br> First, use this Data Exploration tab to explore the fictional data through visualizations and accompanying text."
@@ -747,6 +780,10 @@ server <- function(input, output, session) {
     list(
       element = "#variable-label",
       intro = "Choose a variable to see how it's been simulated for a particular building."
+    ),
+    list(
+      element = "#eda_show_vardetails",
+      intro = "Click here to see the fine-grained details of how I simulated each variable and used a linear regression model to calculate their aggregate impact on energy use."
     ),
     list(
       element = "#time_period-label",
