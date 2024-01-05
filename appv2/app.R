@@ -354,9 +354,40 @@ get_breaks <- function(variable, data) {
   }
 }
 
+getVariableDetails <- function(varName) {
+  # Check if the variable name exists in the list
+  if (varName %in% names(eda_vardetails)) {
+    return(eda_vardetails[[varName]])
+  } else {
+    # Return a default message if the variable is not found
+    return(HTML("<p>No details available for this variable.</p>"))
+  }
+}
+
+eda_vardetails <- list(
+  sqft_per_person = HTML("<p>Square Feet Per Person is derived by dividing the total building area by the number of people estimated to be present.
+                         In Nakatomi Plaza, for instance, if the building area is 21,110 square feet and the estimated number of people on a given day is 500, then the square feet per person would be approximately 42.2 sqft/person.
+                         This provides a picture of how spaciously or densely people are accommodated within the building.</p>"),
+  num_ppl_raw = HTML("<p>For Number of People, I simulate the estimated number of people in a building for each day. 
+                     For example, let's consider the Nakatomi Plaza on a typical weekday.
+                     The estimate for each day is governed by several variables unique to each building: a <strong><em> mean factor, standard deviation factor, scale factor, and weekday/weekend variability.</em></strong>
+                     <br><br>The calculation starts with a base mean of 300, to which I add the building-specific mean factor for weekdays, which is 80 in this case. This results in a mean of 380 people.
+                     Next, the scale factor (which affects the shape and variability of the distribution of estimates) is considered. Starting from a base of 5 (relatively more variability), I add the building's scale factor for weekdays, which is 1 for Nakatomi Plaza, resulting in a total scale factor of 6. 
+                     The standard deviation also plays a role; starting from a base of 70, I add Nakatomi Plaza's specific standard deviation factor for weekdays, 10, resulting in a standard deviation of 80.
+                     The number of people is generated using a gamma distribution shaped by these factors, and modified by a normally distributed random number based on the calculated mean and standard deviation. 
+                     <br><br>This approach ensures a realistic, non-negative estimate that allows the simulations to take into account building-specific occupancy patterns via different means, standard deviations, and scale factors, and weekday/weekend variability.</p>"),
+  temp = HTML("<p>Details about Temperature (F)...</p>"),
+  wind_speed = HTML("<p>Details about Wind Speed (mph)...</p>"),
+  cloud_cover = HTML("<p>Details about Cloud Cover (%)...</p>"),
+  equip_efficiency = HTML("<p>Details about Equipment Efficiency Rating...</p>"),
+  hvac_efficiency = HTML("<p>Details about HVAC Efficiency Rating...</p>"),
+  bldg_area = HTML("<p>Details about Building Size (Sq Ft)...</p>"),
+  total = HTML("<p>Details about Total Energy Use (KWh)...</p>")
+  # Add more variables as needed
+)
+
 
 eda_inputs <- list(
-  
   selectInput("eda_building", "Building",
               choices = c("Grand Budapest Hotel" = "budapest",
                           "Nakatomi Plaza" = "nakatomi",
@@ -394,7 +425,6 @@ scenario_inputs <- list(
                 <span id="scenario_dates_help" class="help-icon" style="cursor: pointer;">?</span>
             </div>')
   ),
-  # Slider input without a label, as it's included in the HTML above
   sliderInput("scenario_range", label = NULL,
               min = min(df$date),
               max = max(df$date) + potential_forecast_window,
@@ -467,6 +497,7 @@ ui <- page_navbar(
   theme = dark,
 
   tags$head(
+    # IntroJS Elements
     tags$style(HTML('
       /* Custom CSS for IntroJS elements */
       .introjs-overlay {
@@ -486,12 +517,32 @@ ui <- page_navbar(
         border-bottom-color: #ffffff; /* Match the tooltip background */
       }
     ')),
-    tags$script(HTML("
-  $(document).on('shiny:connected', function() {
-    $('a[data-value=\"Energy Predictions\"]').attr('id', 'energy-predictions-tab');
-  });
-")),
+    # Data Exploration cards spacing
+    tags$style(HTML("
 
+    .dataexpl-plot-card-container .shiny-card-container {
+      margin-top: 0; /* Remove top margin */
+    }
+  ")),
+  # IDs to connect IntroJS tour to navpanels
+        tags$script(HTML("
+      $(document).on('shiny:connected', function() {
+        $('a[data-value=\"Forecast Details\"]').attr('id', 'forecast-details-tab');
+        $('a[data-value=\"Energy Predictions\"]').attr('id', 'energy-predictions-tab');
+      });
+    ")),
+  # more IDs
+  tags$script(HTML("
+        $(document).on('shiny:connected', function() {
+          // Add ID to the main app title
+          $('.navbar-brand').first().attr('id', 'app-title');
+    
+          // Add IDs to sidebar items based on 'data-value'
+          $('a[data-value=\"Data Exploration\"]').attr('id', 'data-exploration-tab');
+          $('a[data-value=\"Scenario Planning\"]').attr('id', 'scenario-planning-tab');
+        });
+      ")),
+  # Help Icons styling
     tags$style(HTML('
             .help-icon {
                 padding: 0 5px;
@@ -524,16 +575,6 @@ ui <- page_navbar(
             }
         ")
   ),
-    tags$script(HTML("
-        $(document).on('shiny:connected', function() {
-          // Add ID to the main app title
-          $('.navbar-brand').first().attr('id', 'app-title');
-    
-          // Add IDs to sidebar items based on 'data-value'
-          $('a[data-value=\"Data Exploration\"]').attr('id', 'data-exploration-tab');
-          $('a[data-value=\"Scenario Planning\"]').attr('id', 'scenario-planning-tab');
-        });
-      ")),
   
   title = "Energy Insights Dashboard",
   # Removing the global sidebar, as each tab will have its own
@@ -549,9 +590,10 @@ ui <- page_navbar(
         width = 400,
         eda_inputs,
         tags$div(style = "height: 200px;"),  # Add empty space before the materialSwitch
-        actionButton("start_tour", "Take the tour"),  # Add the custom button
+        actionButton("eda_start_tour", "Take the tour"),  # Add the custom button
         materialSwitch(inputId = "theme_toggle", label = "Toggle theme", status = "primary")  # Place the dynamically rendered switch
       ),
+      div(class = "value-boxes-container",
       layout_columns(
         value_box(
           theme = "primary",
@@ -577,8 +619,12 @@ ui <- page_navbar(
           textOutput("boxmax_pctchange"),
           max_height = "150px"  # Set maximum height for the showcase
         )
+      )
       ),
-      card(shinycssloaders::withSpinner(plotOutput("edaPlot")), width=12)
+      div(class = "dataexpl-plot-card-container",
+      card(shinycssloaders::withSpinner(plotOutput("edaPlot")), width=12, fill = T, full_screen = T),
+      actionButton(inputId = "eda_show_vardetails", label = "Show details")
+    )
     )
   ),
   
@@ -591,7 +637,7 @@ ui <- page_navbar(
         width = 420,
         scenario_inputs,  # Call the scenario inputs here
         tags$div(style = "height: 200px;"),  # Add empty space before the materialSwitch
-        actionButton("start_tour", "Take the tour"),  # Add the custom button
+        actionButton("sc_start_tour", "Take the tour"),  # Add the custom button
         materialSwitch(inputId = "theme_toggle", label = "Toggle theme", status = "primary")  # Place the dynamically rendered switch
       ),
       navset_card_underline(
@@ -687,8 +733,8 @@ server <- function(input, output, session) {
     ),
     list(
       element = "#data-exploration-tab",
-      intro = "In this app you can explore the unique characteristics and energy use patterns created from scratch for each building, predict future energy use based on historical patterns, and even run energy use predictions based on custom scenarios of where you control the building characteristics.
-      <br><br> First, use this Data Exploration tab to explore the fictional data with visualizations and accompanying text."
+      intro = "In this app you can explore the unique characteristics and energy use patterns created for each building, predict future energy use based on historical patterns, and even run energy use predictions based on custom scenarios where you control the building characteristics.
+      <br><br> First, use this Data Exploration tab to explore the fictional data through visualizations and accompanying text."
     ),
     list(
       element = "#scenario-planning-tab",
@@ -704,14 +750,22 @@ server <- function(input, output, session) {
     ),
     list(
       element = "#time_period-label",
-      intro = "Zoom in or out to a particular time frame."
+      intro = "And you can zoom in or out to a particular time frame.<br><br>
+      Next, let's look at the Scenario Planning section in more detail."
     ),
     list(
       element = "#energy-predictions-tab",
-      intro = "This tab allows you to view and analyze energy predictions."
+      intro = HTML("<style>em { margin-right: 2px; }</style>
+                   The Scenario Planning section has two tabs: Energy Predictions and Forecast Details.<br><br>The Energy Predictions tab lets you run energy use predictions based on custom scenarios where you control the building characteristics.
+      <br><br>In addition to choosing a building and timeframe, you can control four other characteristics that affect energy use: <strong><em>Square Feet Per Person</em></strong>, <strong><em>Equipment Efficiency</em></strong>, <strong><em>HVAC System Efficiency</em></strong>, and <strong><em>Price per KWh</em></strong>
+      <br><br>Click on the ? icon next to any of the characteristics in the sidebar to learn how the forecast model is taking your adjustments into account.")
     ),
     list(
-      element = "#start_tour",
+      element = "#forecast-details-tab",
+      intro = "The Forecast Details tab lets you explore the variables that go into the forecast in more detail, as well as examine the model's accuracy."
+    ),
+    list(
+      element = "#sc_start_tour",
       intro = "Click here to start this tour again at any time."
     )
     # ... [other steps] ...
@@ -721,16 +775,18 @@ server <- function(input, output, session) {
   # This events list switches from the EDA Plots tab to the Scenario tab at the right moment (currentStep>=10) in the tour.
   get_tour_events <- function() {
     list(
-      "onchange" = I("if (this._currentStep<7) {
-      $('a[data-value=\\\"scenario_planning\\\"]').removeClass('active');
-      $('a[data-value=\\\"eda_plots\\\"]').addClass('active');
-      $('a[data-value=\\\"eda_plots\\\"]').trigger('click');
-    }
-    if (this._currentStep>=7) {
-      $('a[data-value=\\\"eda_plots\\\"]').removeClass('active');
-      $('a[data-value=\\\"scenario_planning\\\"]').addClass('active');
-      $('a[data-value=\\\"scenario_planning\\\"]').trigger('click');
-    }")
+      "onchange" = I("
+      if (this._currentStep < 6) {
+        $('a[data-value=\\'Data Exploration\\']').tab('show');
+      }
+      if (this._currentStep >= 6) {
+        $('a[data-value=\\'Scenario Planning\\']').tab('show');
+        setTimeout(function() {
+          $('a[data-value=\\'Energy Predictions\\']').tab('show');
+        }, 300); // Delay to ensure tab transition
+      }
+      console.log('IntroJS Step:', this._currentStep + 1); // Print the current step number
+    ")
     )
   }
 
@@ -743,99 +799,55 @@ server <- function(input, output, session) {
           events = get_tour_events())
   # and when the button is clicked
   # Server code for starting the introjs tour
-  observeEvent(input$start_tour, {
-    introjs(session, 
-            options = list(steps = steps, 
-                           tooltipClass = "custom-tooltip-width")
-    )
-  })
-  
-  
-### Help Buttons ###  
-  # Scenario - dates help button
   observe({
-    shinyjs::onclick("scenario_dates_help", {
-      showModal(modalDialog(
-        title = "Scenario Forecast Range",
-        HTML("<style>em { margin-right: 2px; }</style>
-             You can ask the Prophet forecasting model to predict energy usage for any of the existing historical dates and/or up to three years into the future (predictions farther out are unreliable). 
-                Note that adjustments to any of the building characteristics below though will only apply to <strong><em>future</em></strong> predictions of those characteristics. The historical data remains unchanged under all scenarios."),
-        easyClose = TRUE,
-        footer = NULL
-      ))})
+    # Check if either of the two buttons is clicked
+    if (input$eda_start_tour > 0 || input$sc_start_tour > 0) {
+      # Start the introjs tour
+      introjs(session, 
+              options = list(steps = steps, 
+                             tooltipClass = "custom-tooltip-width"),
+              events = get_tour_events()
+      )
+    }
   })
   
-  # Scenario - sqft per person help button
-  observe({
-    shinyjs::onclick("scenario_useradj_sqftppl", {
-      showModal(modalDialog(
-        title = "Adjusted Square Footage Per Person",
-        HTML("<style>em { margin-right: 2px; }</style>
-             This adjusts the <strong><em>distribution</em></strong> of future daily predictions for square footage per person up or down by a percentage. 
-                The adjustment is general, not exact, because of randomness and probability statements built into the simulations to model real-world variability. 
-                The predictions still follow their historical patterns, but each daily prediction takes into account the user-defined percentage adjustment. 
-                The historical data remains unchanged under all scenarios."),
-        easyClose = TRUE,
-        footer = NULL
-      ))})
-  })
+
   
-  observe({
-    shinyjs::onclick("scenario_useradj_equip_efficiency", {
-      showModal(modalDialog(
-        title = "Adjusted Equipment Efficiency Rating",
-        HTML("<style>em { margin-right: 2px; }</style>
-             This adjusts the future daily predictions for the plug-in equipment efficiency rating up or down.
-                  The ratio of investment to equipment rating is 0.15 change per $1000 — so for every $1k invested, the investment value in the rating simulation goes up by .15.<br><br>
-                  The rating's simulations are governed by several factors: a <strong><em>yearly decline</em></strong> constant that simulates age-related degradation; a <strong><em>daily change</em></strong> value that is most often static but occasionally fluctuates up or down by a small amount, representing slow, small changes in the aggregate efficiency of equipment inside the building; an <strong><em>event change</em></strong> value that very rarely introduces a large positive or negative change to the rating, representing infrequent major upgrades or breakdowns; and lastly the <strong><em>investment</em></strong> value.<br><br>
-                  The adjustment is general, not exact, because of randomness and probability statements built into the simulations.
-                  The historical data remains unchanged under all scenarios."),
-        easyClose = TRUE,
-        footer = NULL
-      ))
-    })
-  })
-  
-  # Scenario - hvac efficiency help button
-  observe({
-    shinyjs::onclick("scenario_useradj_hvac_efficiency", {
-      showModal(modalDialog(
-        title = "Adjusted HVAC System Efficiency",
-        HTML("<style>em { margin-right: 2px; }</style>
-                  This adjusts the future daily predictions for the HVAC system efficiency rating up or down. The historical data remains unchanged under all scenarios.
-                  The ratio of investment to HVAC system rating is 0.25 change per $1000 — so for every $1k invested, the investment value in the rating simulation goes up by .25.<br><br>
-                  The rating's simulations are governed by several factors: a <strong><em>yearly decline</em></strong> constant that simulates age-related degradation; a <strong><em>daily change</em></strong> value that is most often static but occasionally fluctuates up or down by a small amount, representing slow, small changes in the aggregate efficiency of equipment inside the building; an <strong><em>event change</em></strong> value that very rarely introduces a large positive or negative change to the rating, representing infrequent major upgrades or breakdowns; and lastly the <strong><em>investment</em></strong> value.<br><br>
-                  The adjustment is general, not exact, because of randomness and probability statements built into the simulations to model real-world variability."),
-        easyClose = TRUE,
-        footer = NULL
-      ))
-    })
-  })
-  
-  # Scenario - energy prices help button
-  observe({
-    shinyjs::onclick("scenario_useradj_energyprices", {
-      showModal(modalDialog(
-        title = "Adjusted Energy Prices",
-        HTML("<style>em { margin-right: 2px; }</style>
-                This adjusts the <strong><em>distribution</em></strong> of future daily energy price predictions up or down by a percentage. 
-                The adjustment is general, not exact, because of randomness and probability statements built into the simulations to model real-world variability. 
-                The predictions still follow their historical patterns, but each daily prediction takes into account the user-defined percentage adjustment. 
-                The historical data remains unchanged under all scenarios."),
-        easyClose = TRUE,
-        footer = NULL
-      ))
-    })
-  })
-  
-  #  ***************************************************************    
-  # EDA tab ********************************************************
+#  ***************************************************************    
+# EDA tab ********************************************************
   # Reset button functionality
   observeEvent(input$eda_reset, {
     updateSelectInput(session, "eda_building", selected = "budapest")
     updateSelectInput(session, "variable", selected = "sqft_per_person")
     updateSelectInput(session, "day_type_selector", selected = "all")
     updateSliderInput(session, "time_period", value = c(min(df$date), max(df$date)))
+  })
+  
+  observeEvent(input$eda_show_vardetails, {
+    # Ensure this references the correct input ID
+    selected_var <- input$variable
+    selected_var_pretty <- pretty_variable_names[selected_var]
+    
+    
+    # Check if a variable is selected
+    if (!is.null(selected_var) && selected_var != "") {
+      details <- getVariableDetails(selected_var)
+      
+      showModal(modalDialog(
+        title = paste("Details for", selected_var_pretty),
+        details,
+        easyClose = TRUE,
+        footer = NULL
+      ))
+    } else {
+      # Handle case where no variable is selected
+      showModal(modalDialog(
+        title = "No Variable Selected",
+        "Please select a variable to view its details.",
+        easyClose = TRUE,
+        footer = NULL
+      ))
+    }
   })
   
   # Reactive expression for summary stats boxes
@@ -914,8 +926,9 @@ server <- function(input, output, session) {
   }, ignoreNULL = FALSE)
   
   
-  #  *****************************************************************************    
-  # Scenario Planning tab ********************************************************
+#  *****************************************************************************    
+#  *****************************************************************************    
+# Scenario Planning tab ********************************************************
   
   # Flag to check if scenario rendering has started
   renderingStarted <- reactiveVal(FALSE)
@@ -929,7 +942,87 @@ server <- function(input, output, session) {
     updateSliderInput(session, "useradjust_energyprices", value = 0)
   })
   
-  # Server code for Scenario Planning - run the full simulations
+  
+  ### Help Buttons ###  
+  # Scenario - dates help button
+  observe({
+    shinyjs::onclick("scenario_dates_help", {
+      showModal(modalDialog(
+        title = "Scenario Forecast Range",
+        HTML("<style>em { margin-right: 2px; }</style>
+             This app uses the Prophet forecasting model developed by Facebook...
+             You can ask the Prophet forecasting model to predict energy usage for any of the existing historical dates and/or up to three years into the future (predictions farther out are less reliable). 
+                Note that adjustments to any of the building characteristics below will only apply to <strong><em>future</em></strong> predictions of those characteristics. The historical data remains unchanged under all scenarios."),
+        easyClose = TRUE,
+        footer = NULL
+      ))})
+  })
+  
+  # Scenario - sqft per person help button
+  observe({
+    shinyjs::onclick("scenario_useradj_sqftppl", {
+      showModal(modalDialog(
+        title = "Adjusted Square Footage Per Person",
+        HTML("<style>em { margin-right: 2px; }</style>
+             This adjusts the <strong><em>distribution</em></strong> of future daily predictions for square footage per person up or down by a percentage. 
+                The adjustment is general, not exact, because of randomness and probability statements built into the simulations to model real-world variability. 
+                The predictions still follow their historical patterns, but each daily prediction takes into account the user-defined percentage adjustment. 
+                The historical data remains unchanged under all scenarios."),
+        easyClose = TRUE,
+        footer = NULL
+      ))})
+  })
+  
+  observe({
+    shinyjs::onclick("scenario_useradj_equip_efficiency", {
+      showModal(modalDialog(
+        title = "Adjusted Equipment Efficiency Rating",
+        HTML("<style>em { margin-right: 2px; }</style>
+             This adjusts the future daily predictions for the plug-in equipment efficiency rating up or down.
+                  The ratio of investment to equipment rating is 0.15 change per $1000 — so for every $1k invested, the investment value in the rating simulation goes up by .15.<br><br>
+                  The rating's simulations are governed by several factors: a <strong><em>yearly decline</em></strong> constant that simulates age-related degradation; a <strong><em>daily change</em></strong> value that is most often static but occasionally fluctuates up or down by a small amount, representing slow, small changes in the aggregate efficiency of equipment inside the building; an <strong><em>event change</em></strong> value that very rarely introduces a large positive or negative change to the rating, representing infrequent major upgrades or breakdowns; and lastly the <strong><em>investment</em></strong> value.<br><br>
+                  The adjustment is general, not exact, because of randomness and probability statements built into the simulations.
+                  The historical data remains unchanged under all scenarios."),
+        easyClose = TRUE,
+        footer = NULL
+      ))
+    })
+  })
+  
+  # Scenario - hvac efficiency help button
+  observe({
+    shinyjs::onclick("scenario_useradj_hvac_efficiency", {
+      showModal(modalDialog(
+        title = "Adjusted HVAC System Efficiency",
+        HTML("<style>em { margin-right: 2px; }</style>
+                  This adjusts the future daily predictions for the HVAC system efficiency rating up or down. 
+                  The ratio of investment to HVAC system rating is 0.25 change per $1000 — so for every $1k invested, the investment value in the rating simulation goes up by .25.<br><br>
+                  The rating's simulations are governed by several factors: a <strong><em>yearly decline</em></strong> constant that simulates age-related degradation; a <strong><em>daily change</em></strong> value that is most often static but occasionally fluctuates slightly up or down representing slow, small changes in the aggregate efficiency of equipment inside the building; an <strong><em>event change</em></strong> value that very rarely introduces a large positive or negative change to the rating, representing infrequent major upgrades or breakdowns; and lastly the <strong><em>investment</em></strong> value.<br><br>
+                  The adjustment is general, not exact, because of randomness and probability statements built into the simulations to model real-world variability.
+             The historical data remains unchanged under all scenarios."),
+        easyClose = TRUE,
+        footer = NULL
+      ))
+    })
+  })
+  
+  # Scenario - energy prices help button
+  observe({
+    shinyjs::onclick("scenario_useradj_energyprices", {
+      showModal(modalDialog(
+        title = "Adjusted Energy Prices",
+        HTML("<style>em { margin-right: 2px; }</style>
+                This adjusts the <strong><em>distribution</em></strong> of future daily energy price predictions up or down by a percentage. 
+                The predictions still follow their historical patterns, but each daily prediction takes into account the user-defined percentage adjustment.
+             The adjustment is general, not exact, because of randomness and probability statements built into the simulations to model real-world variability.
+                The historical data remains unchanged under all scenarios."),
+        easyClose = TRUE,
+        footer = NULL
+      ))
+    })
+  })
+  
+# Scenario Planning - run the full simulations
   observeEvent(input$run_scenario, {
     
     tictoc::tic()
