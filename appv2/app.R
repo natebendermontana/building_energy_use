@@ -507,7 +507,9 @@ theme_set(theme_bw(base_size = 16))
 # Create dark and light themes with the custom Sass
 dark <- bs_theme(
   bootswatch = "superhero",
-  primary = "#384a54"
+  primary = "#384a54" # original
+  #primary = "#0f6293"
+  
 )
 
 light <- bs_theme(
@@ -697,7 +699,7 @@ ui <- page_navbar(
           hidden(
             div(id = 'scenario_plotdiv',
                 card(withSpinner(dygraphOutput("scenario_plot"), id = "dygraph_spinner")))),
-          card(plotOutput("testplot"))
+#          card(plotOutput("testplot"))
           
         ),
         nav_panel(
@@ -708,15 +710,7 @@ ui <- page_navbar(
                                   "HVAC Efficiency" = "hvac_efficiency", 
                                   "Price ($/KWh)" = "price_per_kwh", 
                                   "Daily Cost ($)" = "daily_cost")),
-          value_box(
-            theme = "primary",
-            title = HTML("<strong>", "Baseline Cost test", "</strong>"),
-            value = textOutput("baseline_costtest"),
-            showcase = shiny::icon("dollar-sign"),
-            max_height = "150px"  # Set maximum height for the showcase
-          ),
           card(plotOutput("scenario_details_plot"), width=12)
-          
         )
       )  
     )
@@ -1155,8 +1149,8 @@ server <- function(input, output, session) {
       filtered_scenario <- future_full_preds %>%
         filter(ds >= forecast_window_start & ds <= forecast_window_end)
       
-      
-      
+      print("filtered scenario")
+      print(head(filtered_scenario))
       
       # Ensure that 'price_per_kwh' vector is of the same length as 'filtered_scenario$yhat'
       set.seed(12923)
@@ -1167,8 +1161,7 @@ server <- function(input, output, session) {
       
       filtered_scenario$daily_cost <- filtered_scenario$yhat * filtered_prices$price_per_kwh
       
-      # print("filtered scenario")
-      # print(head(filtered_scenario))
+
       # 
       # print("filtered prices")
       # print(head(filtered_prices))
@@ -1247,7 +1240,6 @@ server <- function(input, output, session) {
     
     # print("baseline filtered variables")
     # print(head(base_filtered_scenario))
-    # 
     # print("baseline filtered prices")
     # print(head(base_filtered_prices))
     
@@ -1301,19 +1293,8 @@ server <- function(input, output, session) {
       return(base_filtered_energy_cost)
     })
     
-    
     output$scenario_plot <- renderDygraph({
       dyplot.prophet(m, filtered_scenario)
-    })
-    
-    
-    # hide('dygraph_spinner')
-    # shinyjs::show('scenario_plotdiv')
-    # 
-    
-    output$baseline_costtest <- renderText({
-      test <- comma(round(base_filtered_energy_cost,4))
-      return(test)
     })
     
     output$scenario_details_plot <- renderPlot({
@@ -1321,10 +1302,7 @@ server <- function(input, output, session) {
       pretty_label <- pretty_variable_names[variable]
       
       # Prepare data for the selected variable
-      if (variable == "daily_cost") {
-        scenario_data <- filtered_scenario %>% select(ds, daily_cost)
-        baseline_data <- base_filtered_scenario %>% select(ds, daily_cost)
-      } else if (variable == "price_per_kwh") {
+      if (variable == "price_per_kwh") {
         scenario_data <- filtered_prices %>% select(ds, price_per_kwh)
         baseline_data <- base_filtered_prices %>% select(ds, price_per_kwh)
       } else {
@@ -1333,36 +1311,33 @@ server <- function(input, output, session) {
       }
       
       # Combine and plot data
-      combined_data <- rbind(data.frame(ds = scenario_data$ds, value = scenario_data[[2]], Group = "Scenario"),
-                             data.frame(ds = baseline_data$ds, value = baseline_data[[2]], Group = "Baseline"))
-      
+      combined_data <- rbind(
+        data.frame(ds = scenario_data$ds, value = scenario_data[[variable]], Group = "Scenario"),
+        data.frame(ds = baseline_data$ds, value = baseline_data[[variable]], Group = "Baseline")
+      )
+
       font_color <- if (isTRUE(input$theme_toggle)) "black" else "white"
       
-      ggplot(combined_data, aes(x = ds, y = value, color = Group)) +
-        geom_line()
+      ggplot(combined_data, aes(x = ds, y = value, color = Group, group = Group)) +
+          geom_line() +
+          labs(x = "Date", y = pretty_label) +
+          theme(
+              axis.title.x = element_text(size = 15, color = font_color, margin = margin(t = 10)),
+              axis.title.y = element_text(size = 15, color = font_color, margin = margin(r = 10)),
+              legend.title = element_text(size = 15, color = font_color),
+              legend.text = element_text(size = 13, color = font_color)
+          ) +
+          scale_color_manual(values = reactive_color_palette()) +
+          scale_y_continuous(breaks = get_breaks("value", combined_data),
+                             labels = scales::label_comma(accuracy = 0.1))
       
-      # ggplot(combined_data, aes(x = ds, y = value, color = Group, group = Group)) +
-      #     geom_line() +
-      #     labs(x = "Date", y = pretty_label) +
-      #     theme(
-      #         axis.title.x = element_text(size = 15, color = font_color, margin = margin(t = 10)),
-      #         axis.title.y = element_text(size = 15, color = font_color, margin = margin(r = 10)),
-      #         legend.title = element_text(size = 15, color = font_color),
-      #         legend.text = element_text(size = 13, color = font_color)
-      #     ) +
-      #     scale_color_manual(values = reactive_color_palette()) +
-      #     scale_y_continuous(breaks = get_breaks("value", combined_data),
-      #                        labels = scales::label_comma(accuracy = 0.1))
-      
-      print(variable)
-      print(head(combined_data))
-      
-      
-      print("breaks and labels:")
-      breaks <- get_breaks("value", combined_data)
-      print(breaks)
-      label_function <- scales::label_comma(accuracy = .1)
-      print(label_function(breaks))
+      # print(variable)
+      # print(head(combined_data))
+      # print("breaks and labels:")
+      # breaks <- get_breaks("value", combined_data)
+      # print(breaks)
+      # label_function <- scales::label_comma(accuracy = .1)
+      # print(label_function(breaks))
       
       
     })
