@@ -408,7 +408,7 @@ bldg_area = HTML("<p>Building Area is static for each building.</p>
 total = HTML("
 <p><strong><em>Total Energy Use Simulation:</em></strong> I use a linear regression model to calculate the total energy use, with each factor assigned a specific coefficient reflecting its impact on energy consumption.</p>
 <p><strong><em>Contributing Factors and Coefficients:</em></strong> The model considers several key elements: building area, square feet per person, HVAC efficiency, equipment efficiency, temperature, wind speed, and cloud cover. Each of these factors is assigned a coefficient. For instance, building area has a coefficient of 0.05, signifying a moderate impact on energy use, whereas HVAC and equipment efficiencies have higher negative coefficients (-2 and -2.2 respectively), indicating their substantial influence in reducing energy consumption. Conversely, factors like temperature, with a coefficient of 1.1, significantly increase energy use, reflecting the need for more heating or cooling depending on the temperature.</p>
-<p><strong><em>Calculation of Total Energy Use:</em></strong> The total energy use for each day and each building is computed by multiplying the value of each factor by its corresponding coefficient and summing these up. This method ensures that the total energy use is a realistic representation of various contributing factors. Additionally, to account for daily variations and unforeseen circumstances, random noise is added to the model. This noise is based on a normal distribution with a mean of 10 and a standard deviation of 5, introducing variability to reflect day-to-day fluctuations in energy consumption.</p>
+<p><strong><em>Calculation of Total Energy Use:</em></strong>This method ensures that the total energy use is a realistic representation of various contributing factors. Additionally, to account for daily variations and unforeseen circumstances, random noise is added to the model. This noise is based on a normal distribution with a mean of 10 and a standard deviation of 5, introducing variability to reflect day-to-day fluctuations in energy consumption.</p>
 ")
 )
 
@@ -761,8 +761,9 @@ server <- function(input, output, session) {
       element = "#app-title",
       intro = HTML("<style>em { margin-right: 2px; }</style>
                    This is a portfolio project with X main goals:
-                   <p><strong><em> Goal 1<p></strong></em>
-                   .")
+                   <p><strong><em>Simulate real-world variability</strong></em>To showcase my ability to reason through complex scenarios.
+                   <p><strong><em>Build intuitive, useful tools</strong></em>That mix appealing, modern design with high-powered data analytics for data exploration and decision support. 
+                   <p><strong><em>Scenario Planning</strong></em>To display my ability to integrate user inputs into time-series forecasting, unlocking the ability to 'game out' different scenarios or the likely effects of decisions.")
     ),
     list(
       element = "#data-exploration-tab",
@@ -808,15 +809,14 @@ server <- function(input, output, session) {
     # ... [other steps] ...
   )
 
-  # Ensure the events list for the tour is the same no matter if the tour starts automatically or with the Start Tour button
   # This events list switches from the EDA Plots tab to the Scenario tab at the right moment (currentStep>=10) in the tour.
   get_tour_events <- function() {
     list(
       "onchange" = I("
-      if (this._currentStep < 6) {
+      if (this._currentStep < 8) {
         $('a[data-value=\\'Data Exploration\\']').tab('show');
       }
-      if (this._currentStep >= 6) {
+      if (this._currentStep >= 8) {
         $('a[data-value=\\'Scenario Planning\\']').tab('show');
         setTimeout(function() {
           $('a[data-value=\\'Energy Predictions\\']').tab('show');
