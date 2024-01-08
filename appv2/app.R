@@ -290,6 +290,40 @@ add_future_regressor <- function(df, future_df, pred_building, variable_name, fu
 }
 
 
+# Prophet CV and hyperparameter tuning ####
+# Define the grid of hyperparameters to search
+param_grid <- expand.grid(
+  changepoint_prior_scale = c(0.001, 0.01, 0.1, 0.5),
+  seasonality_prior_scale = c(0.01, 0.1, 1.0, 10.0)
+)
+
+# Store results
+results <- data.frame(params = list(), rmse = numeric(nrow(param_grid)))
+
+# Loop over all combinations of hyperparameters
+for(i in 1:nrow(param_grid)) {
+  params <- param_grid[i, ]
+  m <- prophet(changepoint_prior_scale = params$changepoint_prior_scale,
+               seasonality_prior_scale = params$seasonality_prior_scale)
+  # Add your regressors here
+  m <- add_regressor(m, 'sqft_per_person')
+  m <- add_regressor(m, 'equip_efficiency')
+  m <- add_regressor(m, 'hvac_efficiency')
+  m <- fit.prophet(m, df)
+  
+  # Perform cross-validation
+  df.cv <- prophet::cross_validation(m, initial = '730 days', period = '180 days', horizon = '365 days')
+  df.p <- prophet::performance_metrics(df.cv)
+  rmse <- mean(df.p$rmse)
+  
+  # Store the results
+  results[i, ] <- list(params, rmse)
+}
+
+# Find the best parameters
+best_params <- results[which.min(results$rmse), "params"]
+print(best_params)
+
 # UI Improvements and Themes #####
 
 # pretty-fy things a bit
@@ -1149,9 +1183,6 @@ server <- function(input, output, session) {
       filtered_scenario <- future_full_preds %>%
         filter(ds >= forecast_window_start & ds <= forecast_window_end)
       
-      print("filtered scenario")
-      print(head(filtered_scenario))
-      
       # Ensure that 'price_per_kwh' vector is of the same length as 'filtered_scenario$yhat'
       set.seed(12923)
       prices_df <- generate_energyprices(df, total_dates, potential_total_length, input$useradjust_energyprices) # generate full simulations in order to filter as needed later
@@ -1238,11 +1269,6 @@ server <- function(input, output, session) {
     
     base_filtered_scenario$daily_cost <- base_filtered_scenario$yhat * base_filtered_prices$price_per_kwh
     
-    # print("baseline filtered variables")
-    # print(head(base_filtered_scenario))
-    # print("baseline filtered prices")
-    # print(head(base_filtered_prices))
-    
     # Calculate the total predicted energy usage multiplied by the price for each day
     base_filtered_energy_cost <- sum(base_filtered_scenario$yhat * base_filtered_prices$price_per_kwh) #row-wise cost calc
     
@@ -1300,16 +1326,31 @@ server <- function(input, output, session) {
     output$scenario_details_plot <- renderPlot({
       variable <- input$selected_variable
       pretty_label <- pretty_variable_names[variable]
-      
+
+      # filter base_future_full for components plotting
+      base_future_full_plot <- base_future_full %>%
+        filter(ds >= forecast_window_start & ds <= forecast_window_end)
+
+      future_full_plot <- future_full %>%
+        filter(ds >= forecast_window_start & ds <= forecast_window_end)
+
+      print(length(filtered_prices))
+      print(length(base_filtered_prices))
+      print(length(future_full_plot))
+      print(length(base_future_full_plot))
+
       # Prepare data for the selected variable
       if (variable == "price_per_kwh") {
         scenario_data <- filtered_prices %>% select(ds, price_per_kwh)
         baseline_data <- base_filtered_prices %>% select(ds, price_per_kwh)
+      } else if (variable == "daily_cost") {
+        scenario_data <- filtered_scenario %>% select(ds, daily_cost)
+        baseline_data <- base_filtered_scenario %>% select(ds, daily_cost)
       } else {
-        scenario_data <- filtered_scenario %>% select(ds, !!sym(variable))
-        baseline_data <- base_filtered_scenario %>% select(ds, !!sym(variable))
+        scenario_data <- future_full_plot %>% select(ds, !!sym(variable))
+        baseline_data <- base_future_full_plot %>% select(ds, !!sym(variable))
       }
-      
+
       # Combine and plot data
       combined_data <- rbind(
         data.frame(ds = scenario_data$ds, value = scenario_data[[variable]], Group = "Scenario"),
@@ -1317,7 +1358,7 @@ server <- function(input, output, session) {
       )
 
       font_color <- if (isTRUE(input$theme_toggle)) "black" else "white"
-      
+
       ggplot(combined_data, aes(x = ds, y = value, color = Group, group = Group)) +
           geom_line() +
           labs(x = "Date", y = pretty_label) +
@@ -1330,16 +1371,8 @@ server <- function(input, output, session) {
           scale_color_manual(values = reactive_color_palette()) +
           scale_y_continuous(breaks = get_breaks("value", combined_data),
                              labels = scales::label_comma(accuracy = 0.1))
-      
-      # print(variable)
-      # print(head(combined_data))
-      # print("breaks and labels:")
-      # breaks <- get_breaks("value", combined_data)
-      # print(breaks)
-      # label_function <- scales::label_comma(accuracy = .1)
-      # print(label_function(breaks))
-      
-      
+
+
     })
     
     hide('dygraph_spinner')

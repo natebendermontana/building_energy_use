@@ -385,7 +385,7 @@ for (bldg in seq_along(buildings)) {
     # Simulate daily variation
     daily_change <- sample(c(-.5, 0, .5), 1, prob = c(0.1, 0.8, 0.1)) # Mostly no change, equal chance of small good/bad change
     # Random events: significant increase or decrease
-    if (runif(1) < 0.005) { # 1% chance for a significant event, so roughly 3-4 times a year
+    if (runif(1) < 0.005) { # chance for a significant event, so roughly 3-4 times a year
       event_change <- sample(-10:10, 1)
     } else {
       event_change <- 0
