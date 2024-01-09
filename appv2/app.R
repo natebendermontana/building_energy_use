@@ -6,9 +6,6 @@ library(thematic)
 library(lubridate)
 library(scales)
 library(tictoc)
-# parallel processing
-library(parallel)
-library(doParallel)
 # prophet modeling
 library(prophet)
 library(dygraphs)
@@ -628,11 +625,14 @@ ui <- page_navbar(
         border-bottom-color: #ffffff; /* Match the tooltip background */
       }
     ')),
-    # Data Exploration cards spacing
+    # Main plot cards spacing
     tags$style(HTML("
-
-    .dataexpl-plot-card-container .shiny-card-container {
-      margin-top: 0; /* Remove top margin */
+    .plot-card-container .shiny-card-container {
+      margin-top: 0 !important; /* Force no top margin */
+    }
+    .plot-card-container #scenario_plotdiv {
+      padding-top: 0 !important; /* Force no top padding */
+      margin-top: 0 !important; /* Force no top margin */
     }
   ")),
   # IDs to connect IntroJS tour to navpanels
@@ -688,11 +688,9 @@ ui <- page_navbar(
   ),
   
   title = "Energy Insights Dashboard",
-  # Removing the global sidebar, as each tab will have its own
-  # sidebar = sidebar(eda_inputs, width = 400),
   nav_spacer(),
   
-  # First tab with its unique sidebar
+  # Data Exploration tab
   nav_panel(
     "Data Exploration",
     icon = icon("bar-chart"),
@@ -732,7 +730,7 @@ ui <- page_navbar(
         )
       )
       ),
-      div(class = "dataexpl-plot-card-container",
+      div(class = "plot-card-container",
       card(shinycssloaders::withSpinner(plotOutput("edaPlot")), width=12, fill = T, full_screen = T),
       actionButton(inputId = "eda_show_vardetails", label = "Show details")
     )
@@ -755,7 +753,8 @@ ui <- page_navbar(
         nav_panel(
           title = "Energy Predictions",
           # Your main content for the Scenario Planning tab goes here
-          layout_columns(
+          div(class = "value-boxes-container",
+              layout_columns(
             value_box(
               theme = "primary",
               title = HTML("<strong>", "Predicted Energy", "</strong>"),
@@ -778,9 +777,9 @@ ui <- page_navbar(
               showcase = shiny::icon("dollar-sign"),
               max_height = "150px"  # Set maximum height for the showcase
             )
-          ),
+          )),
           hidden(
-            div(id = 'scenario_plotdiv',
+            div(class = 'plot-card-container', id = 'scenario_plotdiv',
                 card(withSpinner(dygraphOutput("scenario_plot"), id = "dygraph_spinner"), fill = T, full_screen = T))),
         ),
         nav_panel(
@@ -1373,8 +1372,24 @@ server <- function(input, output, session) {
       return(base_filtered_energy_cost)
     })
     
+    # output$scenario_plot <- renderDygraph({
+    #   dyplot.prophet(m, filtered_scenario)
+    # })
+    
     output$scenario_plot <- renderDygraph({
-      dyplot.prophet(m, filtered_scenario)
+      # Create the dygraph object from the prophet model
+      dygraph_object <- dyplot.prophet(m, filtered_scenario)
+      
+      # Check if the dark theme is active
+      if(input$theme_toggle == FALSE) {  # Replace with your actual condition for the dark theme
+        # Apply custom styling for the dark theme
+        dyOptions(dygraph_object, 
+                  colors = c("#CCCCCC"),
+                  axisLabelColor = "#CCCCCC")  # Change the x-axis labels to light gray
+      }
+      
+      # Return the dygraph object
+      dygraph_object
     })
     
     output$scenario_details_plot <- renderPlot({
