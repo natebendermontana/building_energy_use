@@ -6,6 +6,9 @@ library(thematic)
 library(lubridate)
 library(scales)
 library(tictoc)
+# parallel processing
+library(parallel)
+library(doParallel)
 # prophet modeling
 library(prophet)
 library(dygraphs)
@@ -291,38 +294,84 @@ add_future_regressor <- function(df, future_df, pred_building, variable_name, fu
 
 
 # Prophet CV and hyperparameter tuning ####
-# Define the grid of hyperparameters to search
-param_grid <- expand.grid(
-  changepoint_prior_scale = c(0.001, 0.01, 0.1, 0.5),
-  seasonality_prior_scale = c(0.01, 0.1, 1.0, 10.0)
-)
-
-# Store results
-results <- data.frame(params = list(), rmse = numeric(nrow(param_grid)))
-
-# Loop over all combinations of hyperparameters
-for(i in 1:nrow(param_grid)) {
-  params <- param_grid[i, ]
-  m <- prophet(changepoint_prior_scale = params$changepoint_prior_scale,
-               seasonality_prior_scale = params$seasonality_prior_scale)
-  # Add your regressors here
-  m <- add_regressor(m, 'sqft_per_person')
-  m <- add_regressor(m, 'equip_efficiency')
-  m <- add_regressor(m, 'hvac_efficiency')
-  m <- fit.prophet(m, df)
+if(file.exists("data/best_params.rds")) {
+  # Load the best parameters
+  best_params <- readRDS("data/best_params.rds")
+} else {
+  # Define the grid of hyperparameters to search
+  param_grid <- expand.grid(
+    changepoint_prior_scale = c(0.001, 0.01, 0.1, 0.5),
+    seasonality_prior_scale = c(0.01, 0.1, 1.0, 10.0)
+  )
   
-  # Perform cross-validation
-  df.cv <- prophet::cross_validation(m, initial = '730 days', period = '180 days', horizon = '365 days')
-  df.p <- prophet::performance_metrics(df.cv)
-  rmse <- mean(df.p$rmse)
+  all_params <- expand.grid(param_grid)
+  rmses <- numeric()
   
-  # Store the results
-  results[i, ] <- list(params, rmse)
+  # put cols in correct format for CV
+  df_forcv <- df %>%
+    rename(ds = date, y = total) %>%
+    mutate(ds = with_tz(as.Date(ds), tzone = "UTC")) 
+  
+  initial_days <- 730
+  horizon_days <- 365
+  # Calculate the start date for cutoffs
+  start_date_for_cutoffs <- min(df_forcv$ds) + as.difftime(initial_days, units = "days")
+  # Make sure start date for cutoffs is within the dataset range
+  if (start_date_for_cutoffs >= max(df_forcv$ds)) {
+    stop("Initial period is too long for the dataset.")
+  }
+  # Create cutoffs starting after the initial training period
+  cutoffs <- seq(start_date_for_cutoffs, max(df_forcv$ds), by = "180 days")
+  
+  # Ensure that the last cutoff is within the data range and leaves room for the horizon
+  last_possible_cutoff <- max(df_forcv$ds) - as.difftime(horizon_days, units = "days")
+  cutoffs <- cutoffs[cutoffs <= last_possible_cutoff]
+  print(str(cutoffs))
+  
+  # Loop over all combinations of hyperparameters
+    for (i in 1:1) {
+    # for (i in 1:nrow(all_params)) {
+    params <- all_params[i, ]
+    
+    # Fit the Prophet model with the current set of parameters
+    print(paste("Fitting model with parameters:", toString(params)))
+    
+    m_forcv <- prophet(changepoint_prior_scale = params$changepoint_prior_scale,
+                 seasonality_prior_scale = params$seasonality_prior_scale)
+    m_forcv <- add_regressor(m_forcv, 'sqft_per_person')
+    m_forcv <- add_regressor(m_forcv, 'equip_efficiency')
+    m_forcv <- add_regressor(m_forcv, 'hvac_efficiency') 
+    
+    m_forcv <- fit.prophet(m_forcv, df_forcv)
+    
+    
+    # Perform cross-validation
+    df_cv <- cross_validation(m_forcv, cutoffs = cutoffs, horizon = 30, units = "days")
+    
+    # Calculate performance metrics
+    df_p <- performance_metrics(df_cv, rolling_window = 1)
+    print(paste("Current RMSE:", df_p$rmse[1]))
+    
+    # Extract the first RMSE value and append it to the rmses vector
+    rmses <- c(rmses, df_p$rmse[1])
+  }
+  
+  results <- cbind(all_params, rmse = rmses)
+  best_params <- results[which.min(results$rmse), ]
+  saveRDS(best_params, "data/best_params.rds")
 }
 
-# Find the best parameters
-best_params <- results[which.min(results$rmse), "params"]
-print(best_params)
+# Now you can use best_params to fit your final model
+m <- prophet(changepoint_prior_scale = best_params$changepoint_prior_scale,
+                       seasonality_prior_scale = best_params$seasonality_prior_scale)
+# Add regressors and other settings as needed
+m <- add_regressor(m, 'sqft_per_person')
+m <- add_regressor(m, 'equip_efficiency')
+m <- add_regressor(m, 'hvac_efficiency')
+
+# Fit the final model with the best parameters
+#m <- fit.prophet(m, df_forcv)
+
 
 # UI Improvements and Themes #####
 
@@ -732,19 +781,30 @@ ui <- page_navbar(
           ),
           hidden(
             div(id = 'scenario_plotdiv',
-                card(withSpinner(dygraphOutput("scenario_plot"), id = "dygraph_spinner")))),
-#          card(plotOutput("testplot"))
-          
+                card(withSpinner(dygraphOutput("scenario_plot"), id = "dygraph_spinner"), fill = T, full_screen = T))),
         ),
         nav_panel(
-          title = "Forecast Details",
+          title = "Parameter Details",
           selectInput("selected_variable", "Variable", 
                       choices = c("Square Feet Per Person" = "sqft_per_person", 
                                   "Equipment Efficiency" = "equip_efficiency", 
                                   "HVAC Efficiency" = "hvac_efficiency", 
                                   "Price ($/KWh)" = "price_per_kwh", 
                                   "Daily Cost ($)" = "daily_cost")),
-          card(plotOutput("scenario_details_plot"), width=12)
+          hidden(
+            div(id = 'scenario_detailsdiv',
+                card(withSpinner(plotOutput("scenario_details_plot"), id = "details_spinner"), width=12, fill = T, full_screen = T)))
+        ),
+        nav_panel(
+          title = "Model Accuracy",
+          hidden(
+            div(id = 'scenario_accuracydiv',
+                layout_columns(
+                  col_widths = c(6, 6, -6, 6),
+                  card(withSpinner(plotOutput("components_plot"), id = "details_spinner"), width=6, fill = T, full_screen = T),
+                  card(withSpinner(plotOutput("cv_metric_plot"), id = "details_spinner"), width=6, fill = T, full_screen = T),
+                  card(withSpinner(uiOutput("mape_text"), id = "details_spinner"))))
+          )
         )
       )  
     )
@@ -1087,15 +1147,17 @@ server <- function(input, output, session) {
     })
   })
   
-# Scenario Planning - run the full simulations
+# Scenario Planning - run the full simulations ####################################################
   observeEvent(input$run_scenario, {
     
     tictoc::tic()
     output$scenario_plot <- renderUI({}) # render a blank plot
-    #       output$scenario_details_plot <- renderUI({}) # render a blank plot
+    output$scenario_details_plot <- renderUI({}) # render a blank plot
     output$energy_totals <- renderText({}) # render a blank area
     output$forecast_total_cost <- renderText({}) # render a blank area
     output$baseline_cost <- renderText({}) # render a blank area
+    shinyjs::show('scenario_accuracydiv')
+    shinyjs::show('scenario_detailsdiv')
     shinyjs::show('scenario_plotdiv')
     shinyjs::show("dygraph_spinner")
     
@@ -1107,12 +1169,12 @@ server <- function(input, output, session) {
     
     set.seed(12923) # set seed again for consistency
     
-    # Create a Prophet model
-    m <- prophet(interval.width = .8) # .8 is the default confidence interval 
+    # Create a Prophet model - already created in the CV section outside of the app 
+#    m <- prophet(interval.width = .8) # .8 is the default confidence interval 
     # # Add each predictor as a regressor
-    m <- add_regressor(m, 'sqft_per_person')
-    m <- add_regressor(m, 'equip_efficiency')
-    m <- add_regressor(m, 'hvac_efficiency')
+    # m <- add_regressor(m, 'sqft_per_person')
+    # m <- add_regressor(m, 'equip_efficiency')
+    # m <- add_regressor(m, 'hvac_efficiency')
     
     # Fit the model with scenario data
     m <- fit.prophet(m, df = scenario_data)
@@ -1191,14 +1253,6 @@ server <- function(input, output, session) {
         filter(ds >= forecast_window_start & ds <= forecast_window_end)
       
       filtered_scenario$daily_cost <- filtered_scenario$yhat * filtered_prices$price_per_kwh
-      
-
-      # 
-      # print("filtered prices")
-      # print(head(filtered_prices))
-      
-      # print("FORECAST: filtered prices first five prices:")
-      # print(filtered_prices$price_per_kwh[0:5])
       
       # Calculate the total predicted energy usage multiplied by the price for each day
       forecast_energy_cost <- sum(filtered_scenario$yhat * filtered_prices$price_per_kwh) #row-wise cost calc
@@ -1334,11 +1388,6 @@ server <- function(input, output, session) {
       future_full_plot <- future_full %>%
         filter(ds >= forecast_window_start & ds <= forecast_window_end)
 
-      print(length(filtered_prices))
-      print(length(base_filtered_prices))
-      print(length(future_full_plot))
-      print(length(base_future_full_plot))
-
       # Prepare data for the selected variable
       if (variable == "price_per_kwh") {
         scenario_data <- filtered_prices %>% select(ds, price_per_kwh)
@@ -1371,9 +1420,39 @@ server <- function(input, output, session) {
           scale_color_manual(values = reactive_color_palette()) +
           scale_y_continuous(breaks = get_breaks("value", combined_data),
                              labels = scales::label_comma(accuracy = 0.1))
-
-
     })
+    
+    # For Components Plot
+    output$components_plot <- renderPlot({
+      # Assuming 'm' is your fitted Prophet model
+      prophet_plot_components(m, filtered_scenario)
+    })
+    
+    df.cv <- cross_validation(m, initial = 730, period = 180, horizon = 365, units = 'days')
+    
+    # For Cross-Validation Metric Plot
+    output$cv_metric_plot <- renderPlot({
+      plot_cross_validation_metric(df.cv, metric = 'mape')
+    })
+    
+
+      output$mape_text <- renderUI({
+        
+        df.p <- performance_metrics(df.cv)
+        # Ensure df.p is available and contains the required data
+        if (exists("df.p")) {
+          # Extract MAPE for 2, 6, and 12 months
+          mape_2_mnth <- df.p %>% filter(horizon == 60) %>% pull(mape) * 100
+          mape_6_mnth <- df.p %>% filter(horizon == 180) %>% pull(mape) * 100
+          mape_12_mnth <- df.p %>% filter(horizon == 365) %>% pull(mape) * 100
+          
+          # Format the text with bold tags
+          HTML(paste("For this forecast, errors around <b>", round(mape_2_mnth, 1), "%</b> are typical for predictions two months in the future,",
+                     "<b>", round(mape_6_mnth, 1), "%</b> six months out, and <b>", round(mape_12_mnth, 1), "%</b> for predictions that are a year out."))
+        } else {
+          "MAPE data is not available."
+        }
+      })
     
     hide('dygraph_spinner')
     shinyjs::show('scenario_plotdiv')
