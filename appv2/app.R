@@ -23,8 +23,7 @@ library(shinyWidgets)
 
 #### Setup ####
 set.seed(12923)
-getwd()
-#setwd("/Users/natebender/Desktop/repo/r_learning_overall/r_learning/")
+setwd("/Users/natebender/Desktop/repo/r_learning_overall/r_learning/")
 df <- read.csv("data/df_timeseries_orig.csv")
 df <- df %>%
   mutate(
@@ -638,8 +637,9 @@ ui <- page_navbar(
   # IDs to connect IntroJS tour to navpanels
         tags$script(HTML("
       $(document).on('shiny:connected', function() {
-        $('a[data-value=\"Forecast Details\"]').attr('id', 'forecast-details-tab');
         $('a[data-value=\"Energy Predictions\"]').attr('id', 'energy-predictions-tab');
+        $('a[data-value=\"Parameter Details\"]').attr('id', 'forecast-details-tab');
+        $('a[data-value=\"Model Accuracy\"]').attr('id', 'model-accuracy-tab');
       });
     ")),
   # more IDs
@@ -847,10 +847,10 @@ server <- function(input, output, session) {
     list(
       element = "#app-title",
       intro = HTML("<style>em { margin-right: 2px; }</style>
-                   This is a portfolio project with X main goals:
-                   <p><strong><em>Simulate real-world variability</strong></em>To showcase my ability to reason through complex scenarios.
-                   <p><strong><em>Build intuitive, useful tools</strong></em>That mix appealing, modern design with high-powered data analytics for data exploration and decision support. 
-                   <p><strong><em>Scenario Planning</strong></em>To display my ability to integrate user inputs into time-series forecasting, unlocking the ability to 'game out' different scenarios or the likely effects of decisions.")
+                   <p>This is a portfolio project with three main goals:</p>
+                   <p><strong><em>Simulate real-world variability</strong></em> to showcase my ability to reason through complex scenarios.
+                   <p><strong><em>Build an intuitive, useful app</strong></em> that mixes appealing, modern design with useful data analytics. 
+                   <p><strong><em>Deploy time-series forecasting and scenario planning tools</strong></em> that display my ability to integrate user inputs into time-series forecasting, unlocking the ability to 'game out' different scenarios or the likely effects of decisions in complex, multivariate contexts.")
     ),
     list(
       element = "#data-exploration-tab",
@@ -881,13 +881,17 @@ server <- function(input, output, session) {
     list(
       element = "#energy-predictions-tab",
       intro = HTML("<style>em { margin-right: 2px; }</style>
-                   The Scenario Planning section has two tabs: Energy Predictions and Forecast Details.<br><br>The Energy Predictions tab lets you run energy use predictions based on custom scenarios where you control the building characteristics.
+                   The Scenario Planning section has three tabs: Energy Predictions, Parameter Details, and Model Accuracy.<br><br>The Energy Predictions tab lets you run energy use predictions based on custom scenarios where you control the building characteristics.
       <br><br>In addition to choosing a building and timeframe, you can control four other characteristics that affect energy use: <strong><em>Square Feet Per Person</em></strong>, <strong><em>Equipment Efficiency</em></strong>, <strong><em>HVAC System Efficiency</em></strong>, and <strong><em>Price per KWh</em></strong>
       <br><br>Click on the ? icon next to any of the characteristics in the sidebar to learn how the forecast model is taking your adjustments into account.")
     ),
     list(
       element = "#forecast-details-tab",
-      intro = "The Forecast Details tab lets you explore the variables that go into the forecast in more detail, as well as examine the model's accuracy."
+      intro = "The Parameter Details tab lets you explore the variables that go into the forecast in more detail. If you've adjusted any of the sliders, you can see the effect that has made on the variable versus what its simulated values would be under the baseline (no adjustment) scenario."
+    ),
+    list(
+      element = "#model-accuracy-tab",
+      intro = "Finally, the Model Accuracy tab shows two plots: the breakdown of the forecast by its components, and a visualization of the error in the model over time. These help give a sense of where the model predictions are coming from and how accurate they are."
     ),
     list(
       element = "#sc_start_tour",
