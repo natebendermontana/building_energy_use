@@ -23,7 +23,7 @@ library(shinyWidgets)
 
 #### Setup ####
 set.seed(12923)
-setwd("/Users/natebender/Desktop/repo/r_learning_overall/r_learning/")
+#setwd("/Users/natebender/Desktop/repo/r_learning_overall/r_learning/")
 df <- read.csv("data/df_timeseries_orig.csv")
 df <- df %>%
   mutate(
