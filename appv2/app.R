@@ -1436,23 +1436,23 @@ server <- function(input, output, session) {
     })
     
 
-      output$mape_text <- renderUI({
+    output$mape_text <- renderUI({
+      
+      df.p <- performance_metrics(df.cv)
+      # Ensure df.p is available and contains the required data
+      if (exists("df.p")) {
+        # Extract MAPE for 2, 6, and 12 months
+        mape_2_mnth <- df.p %>% filter(horizon == 60) %>% pull(mape) * 100
+        mape_6_mnth <- df.p %>% filter(horizon == 180) %>% pull(mape) * 100
+        mape_12_mnth <- df.p %>% filter(horizon == 365) %>% pull(mape) * 100
         
-        df.p <- performance_metrics(df.cv)
-        # Ensure df.p is available and contains the required data
-        if (exists("df.p")) {
-          # Extract MAPE for 2, 6, and 12 months
-          mape_2_mnth <- df.p %>% filter(horizon == 60) %>% pull(mape) * 100
-          mape_6_mnth <- df.p %>% filter(horizon == 180) %>% pull(mape) * 100
-          mape_12_mnth <- df.p %>% filter(horizon == 365) %>% pull(mape) * 100
-          
-          # Format the text with bold tags
-          HTML(paste("For this forecast, errors around <b>", round(mape_2_mnth, 1), "%</b> are typical for predictions two months in the future,",
-                     "<b>", round(mape_6_mnth, 1), "%</b> six months out, and <b>", round(mape_12_mnth, 1), "%</b> for predictions that are a year out."))
-        } else {
-          "MAPE data is not available."
-        }
-      })
+        # Format the text with bold tags
+        HTML(paste("For this forecast, errors around <b>", round(mape_2_mnth, 1), "%</b> are typical for predictions two months in the future,",
+                   "<b>", round(mape_6_mnth, 1), "%</b> six months out, and <b>", round(mape_12_mnth, 1), "%</b> for predictions that are a year out."))
+      } else {
+        "MAPE data is not available."
+      }
+    })
     
     hide('dygraph_spinner')
     shinyjs::show('scenario_plotdiv')
