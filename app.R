@@ -23,7 +23,7 @@ library(shinyWidgets)
 
 #### Setup ####
 set.seed(12923)
-#setwd("/Users/natebender/Desktop/repo/r_learning_overall/r_learning/")
+#setwd("/Users/natebender/Desktop/repo/building_energy_use/")
 df <- read.csv("data/df_timeseries_orig.csv")
 df <- df %>%
   mutate(
@@ -698,7 +698,7 @@ ui <- page_navbar(
       sidebar = sidebar(
         width = 400,
         eda_inputs,
-        tags$div(style = "height: 200px;"),  # Add empty space before the materialSwitch
+        tags$div(style = "height: 100px;"),  # Add empty space before the materialSwitch
         actionButton("eda_start_tour", "Take the tour"),  # Add the custom button
         materialSwitch(inputId = "theme_toggle", label = "Toggle theme", status = "primary")  # Place the dynamically rendered switch
       ),
@@ -745,7 +745,7 @@ ui <- page_navbar(
       sidebar = sidebar(
         width = 420,
         scenario_inputs,  # Call the scenario inputs here
-        tags$div(style = "height: 200px;"),  # Add empty space before the materialSwitch
+        tags$div(style = "height: 100px;"),  # Add empty space before the materialSwitch
         actionButton("sc_start_tour", "Take the tour"),  # Add the custom button
         materialSwitch(inputId = "theme_toggle", label = "Toggle theme", status = "primary")  # Place the dynamically rendered switch
       ),
@@ -863,7 +863,7 @@ server <- function(input, output, session) {
     ),
     list(
       element = "#eda_building-label",
-      intro = "Each of the three buildings is set up with unique characteristics and usage patterns that affect its energy usage."
+      intro = "The three buildings are each set up with unique characteristics and occupancy patterns that affect their energy usage."
     ),
     list(
       element = "#variable-label",

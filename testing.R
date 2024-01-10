@@ -481,8 +481,14 @@ forecast <- predict(m, future)
 pre_post_comparison <- data.frame(
   Date = future$ds,
   Original_sqft_per_person = future$sqft_per_person,
-  Predicted_sqft_per_person = forecast$sqft_per_person
+  afterpredictions_sqft_per_person = forecast$sqft_per_person
 )
 
 # Print the first few rows to inspect
 print(head(pre_post_comparison))
+
+print("original dataframe")
+print(head(future$sqft_per_person))
+
+print("after predictions have been made - dataframe")
+print(head(forecast$sqft_per_person))
