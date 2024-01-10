@@ -613,11 +613,9 @@ ui <- page_navbar(
       }
       .introjs-tooltip {
         /* Define background and text color for the tooltip */
+        width: 500px !important;
         background-color: #ffffff; /* Light background */
         color: #333333; /* Dark text */
-      }
-      .custom-tooltip-width {
-        max-width: 600px !important; /* Set desired maximum width */
       }
       .introjs-tooltipReferenceLayer .introjs-arrow {
         /* Define color for the tooltip arrow */
@@ -684,7 +682,14 @@ ui <- page_navbar(
                 top: 2.5px;
                 right: 2.5px;
             }
-        ")
+        "),
+  # change scenario_plot dygraph legend background for readability w dark theme
+  tags$style(HTML("
+      .dygraph-legend {
+        background-color: #0f2436 !important; /* Set to white or another light color */
+        color: #cbcbcb !important; /* Set text color to dark for contrast */
+      }
+    "))
   ),
   
   title = "Energy Insights Dashboard",
@@ -850,7 +855,8 @@ server <- function(input, output, session) {
                    <p>This is a portfolio project with three main goals:</p>
                    <p><strong><em>Simulate real-world variability</strong></em> to showcase my ability to reason through complex scenarios.
                    <p><strong><em>Build an intuitive, useful app</strong></em> that mixes appealing, modern design with useful data analytics. 
-                   <p><strong><em>Deploy time-series forecasting and scenario planning tools</strong></em> that display my ability to integrate user inputs into time-series forecasting, unlocking the ability to 'game out' different scenarios or the likely effects of decisions in complex, multivariate contexts.")
+                   <p><strong><em>Deploy time-series forecasting and scenario planning tools</strong></em> that display my ability to integrate user inputs into time-series forecasting, unlocking dynamic 'what-if' scenarios in a complex, multivariate context.
+                   <p>The data itself is not important; it's all made up, anyway. What's important is demonstrating the ability to build decision-support tools that model relationships between variables, take user inputs into account, and display information in a useful manner.")
     ),
     list(
       element = "#data-exploration-tab",
@@ -882,7 +888,7 @@ server <- function(input, output, session) {
       element = "#energy-predictions-tab",
       intro = HTML("<style>em { margin-right: 2px; }</style>
                    The Scenario Planning section has three tabs: Energy Predictions, Parameter Details, and Model Accuracy.<br><br>The Energy Predictions tab lets you run energy use predictions based on custom scenarios where you control the building characteristics.
-      <br><br>In addition to choosing a building and timeframe, you can control four other characteristics that affect energy use: <strong><em>Square Feet Per Person</em></strong>, <strong><em>Equipment Efficiency</em></strong>, <strong><em>HVAC System Efficiency</em></strong>, and <strong><em>Price per KWh</em></strong>
+      <br><br>In addition to choosing a building and timeframe, you can control four other characteristics that affect energy use: <strong><em>Square Feet Per Person,</em></strong> <strong><em>Equipment Efficiency,</em></strong> <strong><em>HVAC System Efficiency,</em></strong> and <strong><em>Price per KWh.</em></strong>
       <br><br>Click on the ? icon next to any of the characteristics in the sidebar to learn how the forecast model is taking your adjustments into account.")
     ),
     list(
@@ -911,7 +917,8 @@ server <- function(input, output, session) {
         $('a[data-value=\\'Scenario Planning\\']').tab('show');
         setTimeout(function() {
           $('a[data-value=\\'Energy Predictions\\']').tab('show');
-        }, 300); // Delay to ensure tab transition
+            introJs().refresh(); // Refresh Intro.js positions
+        }, 1000); // Delay to ensure tab transition
       }
       console.log('IntroJS Step:', this._currentStep + 1); // Print the current step number
     ")
@@ -922,8 +929,7 @@ server <- function(input, output, session) {
   introjs(session, options = list(steps = steps, 
                                   nextLabel = "Next", 
                                   prevLabel = "Previous", 
-                                  skipLabel = "X",
-                                  tooltipClass = "custom-tooltip-width"), # Add custom tooltip class here
+                                  skipLabel = "X"), # Add custom tooltip class here
           events = get_tour_events())
   # and when the button is clicked
   # Server code for starting the introjs tour
@@ -932,8 +938,7 @@ server <- function(input, output, session) {
     if (input$eda_start_tour > 0 || input$sc_start_tour > 0) {
       # Start the introjs tour
       introjs(session, 
-              options = list(steps = steps, 
-                             tooltipClass = "custom-tooltip-width"),
+              options = list(steps = steps),
               events = get_tour_events()
       )
     }
@@ -1385,15 +1390,14 @@ server <- function(input, output, session) {
       dygraph_object <- dyplot.prophet(m, filtered_scenario)
       
       # Check if the dark theme is active
-      if(input$theme_toggle == FALSE) {  # Replace with your actual condition for the dark theme
+      if(!isTRUE(input$theme_toggle)) {  # If dark theme is active, theme_toggle would be FALSE
         # Apply custom styling for the dark theme
-        dyOptions(dygraph_object, 
-                  colors = c("#CCCCCC"),
-                  axisLabelColor = "#CCCCCC")  # Change the x-axis labels to light gray
+        dygraph_object %>%
+          dyOptions(colors = RColorBrewer::brewer.pal(5, "Paired"), axisLabelColor = "#CCCCCC")
+      } else {
+        # No need to apply custom styling for the light theme as it is already set
+        dygraph_object
       }
-      
-      # Return the dygraph object
-      dygraph_object
     })
     
     output$scenario_details_plot <- renderPlot({
