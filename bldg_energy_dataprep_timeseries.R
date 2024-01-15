@@ -203,7 +203,8 @@ overall_ppl <- do.call(rbind, lapply(buildings, function(building_name) {
 
 #### HVAC SYSTEM QUALITY #####################
 # Initialize the starting hvac_efficiency for each building
-start_hvac <- sample(40:100, length(buildings), replace = TRUE)
+# start_hvac <- sample(40:100, length(buildings), replace = TRUE)
+start_hvac <- c(nakatomi = 80, wayne_manor = 20, budapest = 50)
 
 # Create a matrix to hold the efficiency data
 hvac_data <- matrix(nrow = days, ncol = length(buildings))
@@ -214,7 +215,7 @@ for (bldg in seq_along(buildings)) {
   current_hvac <- start_hvac[bldg]
   for (date_idx in 1:length(dates)) {
     # Apply a yearly decline to simulate aging
-    yearly_decline <- (as.integer(-.02)) # add a very small daily negative constant to simulate long-term degradation
+    yearly_decline <- -.02 # add a very small daily negative constant to simulate long-term degradation
     # Simulate daily variation
     daily_change <- sample(c(-.20, 0, .20), 1, prob = c(0.045, 0.96, 0.005)) # Mostly no daily change, slightly better chance of small bad change
     # Random events: significant increase or decrease
@@ -371,7 +372,7 @@ for (i in 1:(days * length(buildings))) {
 #### EQUIPMENT EFFICIENCY ##################### 
 # Initialize the starting efficiency for each building
 # start_efficiency <- sample(40:100, length(buildings), replace = TRUE)
-start_efficiency <- c(nakatomi = 60, wayne_manor = 40, budapest = 80)
+start_efficiency <- c(nakatomi = 80, wayne_manor = 20, budapest = 50)
 
 # Create a matrix to hold the efficiency data
 efficiency_data <- matrix(nrow = days, ncol = length(buildings))

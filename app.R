@@ -203,7 +203,7 @@ generate_hvac_efficiency <- function(df, pred_building, total_dates, potential_t
   # Simulate the efficiency rating for this building across the total forecast length
   for (i in 1:potential_total_length) {
     # Apply a yearly decline to simulate aging
-    yearly_decline <- (-.02) # add a very small daily negative constant to simulate long-term degradation
+    yearly_decline <- -.02 # add a very small daily negative constant to simulate long-term degradation
     # Simulate daily variation
     daily_change <- sample(c(-.20, 0, .20), 1, prob = c(0.045, 0.96, 0.005)) # Mostly no daily change, slightly better chance of small bad change
     investment <- sample(c(0, total_efficiency_change), 1, prob = c(0.95, 0.05)) # simulating if the investment or disinvestment gets applied
