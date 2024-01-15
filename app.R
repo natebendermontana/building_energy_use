@@ -169,7 +169,7 @@ generate_sqft_per_person <- function(df, pred_building, total_dates, potential_t
       sd_factor <- 10 + sd_factor_weekend[pred_building]   
     }
     
-    num_ppl_raw[i] <- as.integer(pmax(0, pmin(500, rgamma(1, shape = 2, scale = scale_factor) + 1 +
+    num_ppl_raw[i] <- as.integer(pmax(0, pmin(2000, rgamma(1, shape = 2, scale = scale_factor) + 1 +
                                                 abs(round(rnorm(1, mean = mean_factor, sd = sd_factor), 0)))))
     
     sqft_per_person[i] <- if (num_ppl_raw[i] > 0) pred_bldg_area / num_ppl_raw[i] else NA
@@ -245,12 +245,12 @@ generate_equip_efficiency <- function(df, pred_building, total_dates, potential_
   # Simulate the efficiency rating for this building across the total forecast length
   for (i in 1:potential_total_length) {
     # Apply a yearly decline to simulate aging
-    yearly_decline <- (-.02) # add a very small daily negative constant to simulate long-term degradation
+    yearly_decline <- (-.01) # add a very small daily negative constant to simulate long-term degradation
     # Simulate daily variation
-    daily_change <- sample(c(-.20, 0, .20), 1, prob = c(0.045, 0.96, 0.005)) # Mostly no daily change, slightly better chance of small bad change
+    daily_change <- sample(c(-.5, 0, .5), 1, prob = c(0.1, 0.8, 0.1)) # Mostly no change, equal chance of small good/bad change
     investment <- sample(c(0, total_efficiency_change), 1, prob = c(0.95, 0.05)) # simulating if the investment or disinvestment gets applied
     # Random events: significant increase or decrease
-    if (runif(1) < 0.004) { # very low chance for a significant positive or negative change to efficiency
+    if (runif(1) < 0.005) { # very low chance for a significant positive or negative change to efficiency
       event_change <- sample(-10:10, 1)
     } else {
       event_change <- 0
@@ -1200,11 +1200,11 @@ server <- function(input, output, session) {
       
       # building-specific adjustments for sqft_per_person
       mean_factor_weekday <- c(nakatomi = 80, wayne_manor = -150, budapest = -7)
-      mean_factor_weekend <- c(nakatomi = 170, wayne_manor = 45, budapest = 10)
+      mean_factor_weekend <- c(nakatomi = 170, wayne_manor = 70, budapest = 10)
       scale_factor_weekday <- c(nakatomi = 1, wayne_manor = -1, budapest = 1)
       scale_factor_weekend <- c(nakatomi = 0, wayne_manor = -1, budapest = 1)
-      sd_factor_weekday <- c(nakatomi = 10, wayne_manor = -69, budapest = -7)
-      sd_factor_weekend <- c(nakatomi = 10, wayne_manor = -29, budapest = -7)
+      sd_factor_weekday <- c(nakatomi = 10, wayne_manor = -19, budapest = -7)
+      sd_factor_weekend <- c(nakatomi = 10, wayne_manor = -9, budapest = -7)
       
       set.seed(12923)
       future_full <- add_future_regressor(
@@ -1258,6 +1258,7 @@ server <- function(input, output, session) {
       prices_df <- generate_energyprices(df, total_dates, potential_total_length, input$useradjust_energyprices) # generate full simulations in order to filter as needed later
       
       filtered_prices <- prices_df %>%
+        mutate(ds = with_tz(ds, tzone = "UTC")) %>%  # match time zones to avoid error messages
         filter(ds >= forecast_window_start & ds <= forecast_window_end)
       
       filtered_scenario$daily_cost <- filtered_scenario$yhat * filtered_prices$price_per_kwh
@@ -1327,6 +1328,7 @@ server <- function(input, output, session) {
     base_prices_df <- generate_energyprices(df, total_dates, potential_total_length, useradjust_energyprices = 0) # generate full simulations in order to filter as needed later
     
     base_filtered_prices <- base_prices_df %>%
+      mutate(ds = with_tz(ds, tzone = "UTC")) %>%  # match time zones to avoid error messages
       filter(ds >= forecast_window_start & ds <= forecast_window_end)
     
     base_filtered_scenario$daily_cost <- base_filtered_scenario$yhat * base_filtered_prices$price_per_kwh
@@ -1349,13 +1351,14 @@ server <- function(input, output, session) {
       cost_diff <- forecast_total_cost - base_filtered_energy_cost
       
       # Define icon colors
-      icon_color_up <- "#00cb21"  # Green for higher
-      icon_color_down <- "#ff6969"  # Red for lower
-      icon_color_equal <- "#bababa"  # Grey for equal
+      icon_color_up <- "#ff6969"  # red for higher; worse
+      icon_color_down <- "#00cb21"  # green for lower; better
+      icon_color_equal <- "#e1e4e5"  # Grey for equal
       
       # Determine the icon name and color
-      icon_name <- ifelse(cost_diff > 0, "chevron-up",
-                          ifelse(cost_diff < 0, "chevron-down", "equals"))
+      icon_name <- "dollar-sign"
+      # icon_name <- ifelse(cost_diff > 0, "chevron-up",
+      #                     ifelse(cost_diff < 0, "chevron-down", "equals"))
       icon_color <- ifelse(cost_diff > 0, icon_color_up,
                            ifelse(cost_diff < 0, icon_color_down, icon_color_equal))
       
@@ -1406,6 +1409,7 @@ server <- function(input, output, session) {
 
       # filter base_future_full for components plotting
       base_future_full_plot <- base_future_full %>%
+        mutate(ds = with_tz(ds, tzone = "UTC")) %>%  # match time zones to avoid error messages
         filter(ds >= forecast_window_start & ds <= forecast_window_end)
 
       future_full_plot <- future_full %>%

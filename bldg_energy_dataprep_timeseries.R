@@ -121,15 +121,15 @@ bldg_area_rep <- rep(bldg_area, each = days)
 # plot(sqft_per_person)  # Plot the square feet per person
 
 mean_factor_weekday <- c(nakatomi = 80, wayne_manor = -150, budapest = -7)
-mean_factor_weekend <- c(nakatomi = 170, wayne_manor = 50, budapest = 10)
+mean_factor_weekend <- c(nakatomi = 170, wayne_manor = 70, budapest = 10)
 scale_factor_weekday <- c(nakatomi = 1, wayne_manor = -1, budapest = 1)
 scale_factor_weekend <- c(nakatomi = 0, wayne_manor = -1, budapest = 1)
-sd_factor_weekday <- c(nakatomi = 10, wayne_manor = -69, budapest = -7)
-sd_factor_weekend <- c(nakatomi = 10, wayne_manor = -29, budapest = -7)
+sd_factor_weekday <- c(nakatomi = 10, wayne_manor = -19, budapest = -7)
+sd_factor_weekend <- c(nakatomi = 10, wayne_manor = -9, budapest = -7)
 
 
 generate_num_ppl <- function(building_name, dates, weekdays_singlebldg, mean_factor_weekday, mean_factor_weekend,
-                             scale_factor_weekday, scale_factor_weekend, sd_factor_adjust, bldg_area_named) {
+                             scale_factor_weekday, scale_factor_weekend, sd_factor_weekday, sd_factor_weekend, bldg_area_named) {
   
   num_ppl_raw <- numeric(length = length(dates))
   sqft_per_person <- numeric(length = length(dates))
@@ -138,11 +138,11 @@ generate_num_ppl <- function(building_name, dates, weekdays_singlebldg, mean_fac
     if (weekdays_singlebldg[i] == 1) {  # Weekday
       mean_factor <- 300 + mean_factor_weekday[building_name]
       scale_factor <- 5 + scale_factor_weekday[building_name]
-      sd_factor <- 70 + sd_factor_weekday[building_name]
+      sd_factor <- 20 + sd_factor_weekday[building_name]
     } else {  # Weekend
-      mean_factor <- 100 + mean_factor_weekend[building_name]
+      mean_factor <- 70 + mean_factor_weekend[building_name]
       scale_factor <- 5 + scale_factor_weekend[building_name]
-      sd_factor <- 30 + sd_factor_weekend[building_name]
+      sd_factor <- 10 + sd_factor_weekend[building_name]
     }
     
     num_ppl_raw[i] <- as.integer(pmax(0, pmin(2000, rgamma(1, shape = 2, scale = scale_factor) + 1 +
@@ -163,7 +163,7 @@ generate_num_ppl <- function(building_name, dates, weekdays_singlebldg, mean_fac
 
 overall_ppl <- do.call(rbind, lapply(buildings, function(building_name) {
   generate_num_ppl(building_name, dates, weekdays_singlebldg, mean_factor_weekday, mean_factor_weekend,
-                   scale_factor_weekday, scale_factor_weekend, sd_factor_adjust, bldg_area_named)}))
+                   scale_factor_weekday, scale_factor_weekend, sd_factor_weekday, sd_factor_weekend, bldg_area_named)}))
 
 # check distributions if needed
 # overall_ppl %>%
@@ -370,7 +370,8 @@ for (i in 1:(days * length(buildings))) {
 
 #### EQUIPMENT EFFICIENCY ##################### 
 # Initialize the starting efficiency for each building
-start_efficiency <- sample(40:100, length(buildings), replace = TRUE)
+# start_efficiency <- sample(40:100, length(buildings), replace = TRUE)
+start_efficiency <- c(nakatomi = 60, wayne_manor = 40, budapest = 80)
 
 # Create a matrix to hold the efficiency data
 efficiency_data <- matrix(nrow = days, ncol = length(buildings))
