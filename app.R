@@ -107,7 +107,8 @@ generate_energyprices <- function(df, total_dates, potential_total_length, usera
     pull(price_per_kwh)
   
   # Calculate the percentage adjustment from the user input
-  pcnt_adjustment <- 1 + (useradjust_energyprices / 100)
+  min_pct_adjustment <- 0.0001  # A small positive value, like 0.0001
+  pcnt_adjustment <- max(min_pct_adjustment, 1 + (useradjust_energyprices / 100))
   
   # Create a df to store future energy price data and dates for filtering later on
   # "ds" aligns with the existing filtering code used for the prophet model
@@ -128,8 +129,8 @@ generate_energyprices <- function(df, total_dates, potential_total_length, usera
     }
     
     # Calculate the new price with tightened constraints and user adjustment
-    new_price <- max(0.10, min(0.50, (current_price + yearly_trend + daily_change + event_change) * pcnt_adjustment))
-    future_energy_prices$price_per_kwh[i] <- new_price
+    new_price <- max(0.10, min(0.60, current_price + yearly_trend + daily_change + event_change))
+    future_energy_prices$price_per_kwh[i] <- new_price * pcnt_adjustment
     
     # Update the current price for the next day
     current_price <- new_price
@@ -162,12 +163,12 @@ generate_sqft_per_person <- function(df, pred_building, total_dates, potential_t
   for (i in 1:(potential_total_length)) {
     if (weekdays[i] == 1) {
       # Generate more people on weekdays
-      mean_factor <- (300 + mean_factor_weekday[pred_building])
+      mean_factor <- 300 + mean_factor_weekday[pred_building]
       scale_factor <- 5 + scale_factor_weekday[pred_building]
       sd_factor <- 20 + sd_factor_weekday[pred_building]   
     } else {
       # Generate fewer people on weekends
-      mean_factor <- (70 + mean_factor_weekend[pred_building])
+      mean_factor <- 70 + mean_factor_weekend[pred_building]
       scale_factor <- 5 + scale_factor_weekend[pred_building]
       sd_factor <- 10 + sd_factor_weekend[pred_building]   
     }
@@ -191,7 +192,7 @@ generate_sqft_per_person <- function(df, pred_building, total_dates, potential_t
 generate_hvac_efficiency <- function(df, pred_building, total_dates, potential_total_length, useradjust_hvac_efficiency) {
   # Conversion factor (Efficiency increase per $1,000)
   #efficiency_per_thousand = 0.005
-  efficiency_per_thousand = 0.05
+  efficiency_per_thousand = 0.07
   
   
   # Total efficiency increase based on user investment
@@ -459,13 +460,13 @@ eda_vardetails <- list(
                      Next, the scale factor (which affects the shape and variability of the distribution of estimates) is considered. Starting from a base of 5 (relatively more variability), I add the building's scale factor for weekdays, which is 1 for Nakatomi Plaza, resulting in a total scale factor of 6. 
                      The standard deviation also plays a role; starting from a base of 70, I add Nakatomi Plaza's specific standard deviation factor for weekdays, 10, resulting in a standard deviation of 80.
                      The number of people is generated using a gamma distribution shaped by these factors, and modified by a normally distributed random number based on the calculated mean and standard deviation. 
-                     <br><br>This approach ensures a realistic, non-negative estimate that allows the simulations to take into account building-specific occupancy patterns via different means, standard deviations, scale factors, and weekday/weekend variability.</p>"),
+                     <br><br>Altogether, this approach ensures a realistic, non-negative estimate that allows the simulations to take into account building-specific occupancy patterns via different means, standard deviations, scale factors, and weekday/weekend variability.</p>"),
   temp = HTML("<p>In simulating temperatures for a Seattle-like environment, our model captures the nuanced variations across the year, considering both seasonal trends and daily fluctuations.
               Starting with Seattle’s average winter low of 37°F and summer high of 79°F, the model establishes a mean temperature and an amplitude to represent seasonal changes. The mean temperature, an average of the high and low, serves as the base, while the amplitude, half the difference between the high and low, reflects the extent of seasonal variation.</p>
               A sine wave function is used to model the natural ebb and flow of temperatures, peaking in summer and dipping in winter. This cyclical pattern is a fundamental characteristic of temperate climates. Additionally, each building receives a unique temperature adjustment to account for microclimatic differences, such as urban heat islands or varying sun exposure.
               To add realism, the model introduces random daily variations using a normal distribution with a standard deviation of 5°F. This randomness accounts for day-to-day weather changes, like unexpected rain or cloud cover.</p>
               Each building’s daily temperature is then calculated by combining the base temperature, the sine wave adjustment, and the random variation, while ensuring the final values stay within a plausible range (0°F to 110°F).</p>"),
-  wind_speed = HTML("<p>Using Seattle again as the hypothetical location,I first establish average low and high wind speeds, at 3 mph and 7 mph, respectively. Using these values, I calculate a mean wind speed and an amplitude to represent the range of fluctuation.
+  wind_speed = HTML("<p>Using Seattle again as the hypothetical location, I first establish average low and high wind speeds, at 3 mph and 7 mph, respectively. Using these values, I calculate a mean wind speed and an amplitude to represent the range of fluctuation.
                     The simulation employs a sine wave function to model the natural seasonal variation of wind speed — which is minimal in a place like Seattle — with adjustments for each building. For example, a building in an open area might experience higher wind speeds. This is considered by adding a building-specific adjustment to the mean wind speed.</p>
                     Further, to add a layer of randomness that mirrors daily weather variations, I introduce random noise using a normal distribution. The final wind speed for each building and each day is a combination of the base wind speed (shaped by the sine wave and building adjustment) and this random noise, constrained within a range of 0 to 40 mph.</p>"),
   cloud_cover = HTML("<p>Cloud cover is simulated to reflect the typical pattern of clearer and cloudier periods throughout the year. Starting with an average range from 0% (clear skies) to 100% (completely overcast), I use these extremes to define a mean and amplitude.</p>
@@ -492,7 +493,7 @@ bldg_area = HTML("<p>Building Area is static for each building.</p>
 total = HTML("
 <p><strong><em>Total Energy Use Simulation:</em></strong> I use a linear regression model to calculate the total energy use, with each factor assigned a specific coefficient reflecting its impact on energy consumption.</p>
 <p><strong><em>Contributing Factors and Coefficients:</em></strong> The model considers several key elements: building area, square feet per person, HVAC efficiency, equipment efficiency, temperature, wind speed, and cloud cover. Each of these factors is assigned a coefficient. For instance, building area has a coefficient of 0.05, signifying a moderate impact on energy use, whereas HVAC and equipment efficiencies have higher negative coefficients (-2 and -2.2 respectively), indicating their substantial influence in reducing energy consumption. Conversely, factors like temperature, with a coefficient of 1.1, significantly increase energy use, reflecting the need for more heating or cooling depending on the temperature.</p>
-<p><strong><em>Calculation of Total Energy Use:</em></strong>This method ensures that the total energy use is a realistic representation of various contributing factors. Additionally, to account for daily variations and unforeseen circumstances, random noise is added to the model. This noise is based on a normal distribution with a mean of 10 and a standard deviation of 5, introducing variability to reflect day-to-day fluctuations in energy consumption.</p>
+<p><strong><em>Calculation of Total Energy Use:</em></strong> This method ensures that the total energy use is a realistic representation of various contributing factors. Additionally, to account for daily variations and unforeseen circumstances, random noise is added to the model. This noise is based on a normal distribution with a mean of 10 and a standard deviation of 5, introducing variability to reflect day-to-day fluctuations in energy consumption.</p>
 ")
 )
 
@@ -1103,8 +1104,9 @@ server <- function(input, output, session) {
       showModal(modalDialog(
         title = "Scenario Forecast Range",
         HTML("<style>em { margin-right: 2px; }</style>
-             This app uses the Prophet forecasting model developed by Facebook...
-             You can ask the Prophet forecasting model to predict energy usage for any of the existing historical dates and/or up to three years into the future (predictions farther out are less reliable). 
+             This app uses the Prophet forecasting model developed by Facebook. Prophet is an open-source tool developed by Facebook for time series forecasting that is designed to handle the common features of business time series such as seasonality and holidays. 
+             It works well with daily observations that display patterns on different time scales, and it's robust to missing data and shifts in the trend, making it suitable for a wide array of business forecasting applications.
+             <br><br>You can ask the Prophet forecasting model to predict energy usage for any of the existing historical dates and/or up to three years into the future (predictions farther out are less reliable). 
                 Note that adjustments to any of the building characteristics below will only apply to <strong><em>future</em></strong> predictions of those characteristics. The historical data remains unchanged under all scenarios."),
         easyClose = TRUE,
         footer = NULL
@@ -1118,8 +1120,7 @@ server <- function(input, output, session) {
         title = "Adjusted Square Footage Per Person",
         HTML("<style>em { margin-right: 2px; }</style>
              This adjusts the <strong><em>distribution</em></strong> of future daily predictions for square footage per person up or down by a percentage. 
-                The adjustment is general, not exact, because of randomness and probability statements built into the simulations to model real-world variability. 
-                The predictions still follow their historical patterns, but each daily prediction takes into account the user-defined percentage adjustment. 
+                After the historical patterns of randomness and probability statements that model real-world variability are applied, the user-defined percentage adjustment is applied to each daily prediction. 
                 The historical data remains unchanged under all scenarios."),
         easyClose = TRUE,
         footer = NULL
@@ -1132,7 +1133,7 @@ server <- function(input, output, session) {
         title = "Adjusted Equipment Efficiency Rating",
         HTML("<style>em { margin-right: 2px; }</style>
              This adjusts the future daily predictions for the plug-in equipment efficiency rating up or down.
-                  The ratio of investment to equipment rating is 0.15 change per $1000 — so for every $1k invested, the investment value in the rating simulation goes up by .15.<br><br>
+                  The ratio of investment to equipment rating is 0.05 change per $1000 — so for every $1k invested, the daily efficiency rating is increased by .05.<br><br>
                   The rating's simulations are governed by several factors: a <strong><em>yearly decline</em></strong> constant that simulates age-related degradation; a <strong><em>daily change</em></strong> value that is most often static but occasionally fluctuates up or down by a small amount, representing slow, small changes in the aggregate efficiency of equipment inside the building; an <strong><em>event change</em></strong> value that very rarely introduces a large positive or negative change to the rating, representing infrequent major upgrades or breakdowns; and lastly the <strong><em>investment</em></strong> value.<br><br>
                   The adjustment is general, not exact, because of randomness and probability statements built into the simulations.
                   The historical data remains unchanged under all scenarios."),
@@ -1149,7 +1150,7 @@ server <- function(input, output, session) {
         title = "Adjusted HVAC System Efficiency",
         HTML("<style>em { margin-right: 2px; }</style>
                   This adjusts the future daily predictions for the HVAC system efficiency rating up or down. 
-                  The ratio of investment to HVAC system rating is 0.25 change per $1000 — so for every $1k invested, the investment value in the rating simulation goes up by .25.<br><br>
+                  The ratio of investment to HVAC system rating is 0.07 change per $1000 — so for every $1k invested, the daily efficiency rating is increased by .07.<br><br>
                   The rating's simulations are governed by several factors: a <strong><em>yearly decline</em></strong> constant that simulates age-related degradation; a <strong><em>daily change</em></strong> value that is most often static but occasionally fluctuates slightly up or down representing slow, small changes in the aggregate efficiency of equipment inside the building; an <strong><em>event change</em></strong> value that very rarely introduces a large positive or negative change to the rating, representing infrequent major upgrades or breakdowns; and lastly the <strong><em>investment</em></strong> value.<br><br>
                   The adjustment is general, not exact, because of randomness and probability statements built into the simulations to model real-world variability.
              The historical data remains unchanged under all scenarios."),
@@ -1166,8 +1167,7 @@ server <- function(input, output, session) {
         title = "Adjusted Energy Prices",
         HTML("<style>em { margin-right: 2px; }</style>
                 This adjusts the <strong><em>distribution</em></strong> of future daily energy price predictions up or down by a percentage. 
-                The predictions still follow their historical patterns, but each daily prediction takes into account the user-defined percentage adjustment.
-             The adjustment is general, not exact, because of randomness and probability statements built into the simulations to model real-world variability.
+                After the historical patterns of randomness and probability statements that model real-world variability are applied, the user-defined percentage adjustment is applied to each daily prediction. 
                 The historical data remains unchanged under all scenarios."),
         easyClose = TRUE,
         footer = NULL
@@ -1424,7 +1424,7 @@ server <- function(input, output, session) {
     })
     
     output$forecast_day_type_selector <- renderUI({
-      if(input$selected_variable == "sqft_per_person") {
+      if(input$selected_variable == "sqft_per_person" || input$selected_variable == "daily_cost") {
         selectInput("forecast_day_type", "Day Type",
                     choices = c("All" = "all",
                                 "Weekdays" = "weekdays",
