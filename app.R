@@ -154,23 +154,28 @@ generate_sqft_per_person <- function(df, pred_building, total_dates, potential_t
   weekdays <- ifelse(lubridate::wday(total_dates) %in% c(1, 7), 0, 1) # 0 for weekend, 1 for weekday
   num_ppl_raw <- numeric(length = potential_total_length)
   sqft_per_person <- numeric(length = potential_total_length)
-  pcnt_adjustment = 1 - (useradjust_sqft_per_person / 100)
+  min_pcnt_adjustment <- 0.01 # Prevent division by zero
+  # Adjustment factor for the number of people to achieve the desired sqft_per_person
+  adjust_factor <- 1 / max(1 + (useradjust_sqft_per_person / 100), min_pcnt_adjustment)
+  
   
   for (i in 1:(potential_total_length)) {
     if (weekdays[i] == 1) {
       # Generate more people on weekdays
-      mean_factor <- (300 + mean_factor_weekday[pred_building]) * pcnt_adjustment
+      mean_factor <- (300 + mean_factor_weekday[pred_building])
       scale_factor <- 5 + scale_factor_weekday[pred_building]
       sd_factor <- 20 + sd_factor_weekday[pred_building]   
     } else {
       # Generate fewer people on weekends
-      mean_factor <- (70 + mean_factor_weekend[pred_building]) * pcnt_adjustment
+      mean_factor <- (70 + mean_factor_weekend[pred_building])
       scale_factor <- 5 + scale_factor_weekend[pred_building]
       sd_factor <- 10 + sd_factor_weekend[pred_building]   
     }
     
     num_ppl_raw[i] <- as.integer(pmax(0, pmin(2000, rgamma(1, shape = 2, scale = scale_factor) + 1 +
                                                 abs(round(rnorm(1, mean = mean_factor, sd = sd_factor), 0)))))
+    
+    num_ppl_raw[i] <- num_ppl_raw[i] * adjust_factor
     
     sqft_per_person[i] <- if (num_ppl_raw[i] > 0) pred_bldg_area / num_ppl_raw[i] else NA
     
@@ -186,7 +191,7 @@ generate_sqft_per_person <- function(df, pred_building, total_dates, potential_t
 generate_hvac_efficiency <- function(df, pred_building, total_dates, potential_total_length, useradjust_hvac_efficiency) {
   # Conversion factor (Efficiency increase per $1,000)
   #efficiency_per_thousand = 0.005
-  efficiency_per_thousand = 0.25
+  efficiency_per_thousand = 0.05
   
   
   # Total efficiency increase based on user investment
@@ -203,10 +208,10 @@ generate_hvac_efficiency <- function(df, pred_building, total_dates, potential_t
   # Simulate the efficiency rating for this building across the total forecast length
   for (i in 1:potential_total_length) {
     # Apply a yearly decline to simulate aging
-    yearly_decline <- -.02 # add a very small daily negative constant to simulate long-term degradation
+    yearly_decline <- -.0001 # add a very small daily negative constant to simulate long-term degradation
     # Simulate daily variation
     daily_change <- sample(c(-.20, 0, .20), 1, prob = c(0.045, 0.96, 0.005)) # Mostly no daily change, slightly better chance of small bad change
-    investment <- sample(c(0, total_efficiency_change), 1, prob = c(0.95, 0.05)) # simulating if the investment or disinvestment gets applied
+    investment <- sample(c(0, total_efficiency_change), 1, prob = c(0.99, 0.01)) # simulating if the investment or disinvestment gets applied
     # Random events: significant increase or decrease
     if (runif(1) < 0.004) { # very low chance for a significant positive or negative change to efficiency
       event_change <- sample(-10:10, 1)
@@ -229,7 +234,7 @@ generate_hvac_efficiency <- function(df, pred_building, total_dates, potential_t
 generate_equip_efficiency <- function(df, pred_building, total_dates, potential_total_length, useradjust_equip_efficiency) {
   # Conversion factor (Efficiency increase per $1,000)
   #efficiency_per_thousand = 0.003
-  efficiency_per_thousand = 0.15
+  efficiency_per_thousand = 0.05
   
   # Total efficiency increase based on user investment
   total_efficiency_change = useradjust_equip_efficiency * efficiency_per_thousand / 1000
@@ -245,10 +250,10 @@ generate_equip_efficiency <- function(df, pred_building, total_dates, potential_
   # Simulate the efficiency rating for this building across the total forecast length
   for (i in 1:potential_total_length) {
     # Apply a yearly decline to simulate aging
-    yearly_decline <- (-.01) # add a very small daily negative constant to simulate long-term degradation
+    yearly_decline <- -.01 # add a very small daily negative constant to simulate long-term degradation
     # Simulate daily variation
     daily_change <- sample(c(-.5, 0, .5), 1, prob = c(0.1, 0.8, 0.1)) # Mostly no change, equal chance of small good/bad change
-    investment <- sample(c(0, total_efficiency_change), 1, prob = c(0.95, 0.05)) # simulating if the investment or disinvestment gets applied
+    investment <- sample(c(0, total_efficiency_change), 1, prob = c(0.99, 0.01)) # simulating if the investment or disinvestment gets applied
     # Random events: significant increase or decrease
     if (runif(1) < 0.005) { # very low chance for a significant positive or negative change to efficiency
       event_change <- sample(-10:10, 1)
@@ -553,7 +558,7 @@ scenario_inputs <- list(
             </div>')
   ),
   sliderInput("useradjust_equip_efficiency", label = NULL,
-              min = -100000, max = 100000, value = 0, step = 100, pre = "$"),
+              min = 0, max = 50000, value = 0, step = 100, pre = "$"),
   tags$div(
     HTML('
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0px;">
@@ -562,7 +567,7 @@ scenario_inputs <- list(
             </div>')
   ),
   sliderInput("useradjust_hvac_efficiency", label = NULL,
-              min = -100000, max = 100000, value = 0, step = 100, pre = "$"),
+              min = 0, max = 50000, value = 0, step = 100, pre = "$"),
   tags$div(
     HTML('
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0px;">
@@ -572,6 +577,7 @@ scenario_inputs <- list(
   ),
   sliderInput("useradjust_energyprices", label = NULL,
               min = -100, max = 100, value = 0, post = "%"),
+  uiOutput("forecast_day_type_selector"),
   actionButton("scenario_reset", "Reset"),
   actionButton("run_scenario", "Run Scenario")
 )
@@ -1031,6 +1037,12 @@ server <- function(input, output, session) {
       if (input$variable %in% c("sqft_per_person", "num_ppl_raw") && !is.null(input$day_type)) {
         plot_df <- plot_df %>% 
           mutate(day_type = ifelse(weekday == 1, "Weekday", "Weekend"))
+      
+      # Filter based on the selected day type
+      if (input$day_type != "all") {
+        filter_day_type <- ifelse(input$day_type == "weekdays", "Weekday", "Weekend")
+        plot_df <- plot_df %>% filter(day_type == filter_day_type)
+      }
       }
       
       font_color <- if (isTRUE(input$theme_toggle)) "black" else "white"
@@ -1403,6 +1415,15 @@ server <- function(input, output, session) {
       }
     })
     
+    output$forecast_day_type_selector <- renderUI({
+      if(input$selected_variable == "sqft_per_person") {
+        selectInput("forecast_day_type", "Day Type",
+                    choices = c("All" = "all",
+                                "Weekdays" = "weekdays",
+                                "Weekends" = "weekends"))
+      }
+    })
+    
     output$scenario_details_plot <- renderPlot({
       variable <- input$selected_variable
       pretty_label <- pretty_variable_names[variable]
@@ -1411,10 +1432,20 @@ server <- function(input, output, session) {
       base_future_full_plot <- base_future_full %>%
         mutate(ds = with_tz(ds, tzone = "UTC")) %>%  # match time zones to avoid error messages
         filter(ds >= forecast_window_start & ds <= forecast_window_end)
+      # Determine weekdays and weekends
+      base_future_full_plot <- base_future_full_plot %>%
+        mutate(day_type = ifelse(wday(ds, week_start = 1) %in% c(6, 7), "weekends", "weekdays")) # 0 for weekend, 1 for weekday, with Mon being the first day of the week
 
+      print(head(base_future_full_plot$day_type))
+      
       future_full_plot <- future_full %>%
         filter(ds >= forecast_window_start & ds <= forecast_window_end)
-
+      
+      future_full_plot <- future_full_plot %>%
+        mutate(day_type = ifelse(wday(ds, week_start = 1) %in% c(6, 7), "weekends", "weekdays")) # 0 for weekend, 1 for weekday, with Mon being the first day of the week
+      
+      print(head(future_full_plot$day_type))
+      
       # Prepare data for the selected variable
       if (variable == "price_per_kwh") {
         scenario_data <- filtered_prices %>% select(ds, price_per_kwh)
@@ -1426,27 +1457,42 @@ server <- function(input, output, session) {
         scenario_data <- future_full_plot %>% select(ds, !!sym(variable))
         baseline_data <- base_future_full_plot %>% select(ds, !!sym(variable))
       }
-
-      # Combine and plot data
+      
+      # Combine and plot data with day_type
       combined_data <- rbind(
-        data.frame(ds = scenario_data$ds, value = scenario_data[[variable]], Group = "Scenario"),
-        data.frame(ds = baseline_data$ds, value = baseline_data[[variable]], Group = "Baseline")
+        data.frame(ds = scenario_data$ds, value = scenario_data[[variable]], Group = "Scenario", 
+                   day_type = ifelse(wday(scenario_data$ds, week_start = 1) %in% c(6, 7), "weekends", "weekdays")),
+        data.frame(ds = baseline_data$ds, value = baseline_data[[variable]], Group = "Baseline", 
+                   day_type = ifelse(wday(baseline_data$ds, week_start = 1) %in% c(6, 7), "weekends", "weekdays"))
       )
+      
+      # Filter based on the selected day type if variable is sqft_per_person
+      if (variable == "sqft_per_person" && input$forecast_day_type != "all") {
+        selected_day_type <- ifelse(input$forecast_day_type == "weekdays", "Weekdays", "Weekends")
+        combined_data <- combined_data %>% filter(day_type == selected_day_type)
+      }
 
       font_color <- if (isTRUE(input$theme_toggle)) "black" else "white"
 
-      ggplot(combined_data, aes(x = ds, y = value, color = Group, group = Group)) +
-          geom_line() +
-          labs(x = "Date", y = pretty_label) +
-          theme(
-              axis.title.x = element_text(size = 15, color = font_color, margin = margin(t = 10)),
-              axis.title.y = element_text(size = 15, color = font_color, margin = margin(r = 10)),
-              legend.title = element_text(size = 15, color = font_color),
-              legend.text = element_text(size = 13, color = font_color)
-          ) +
-          scale_color_manual(values = reactive_color_palette()) +
-          scale_y_continuous(breaks = get_breaks("value", combined_data),
-                             labels = scales::label_comma(accuracy = 0.1))
+      p <- ggplot(combined_data, aes(x = ds, y = value, group = Group)) +
+        geom_line() +
+        labs(x = "Date", y = pretty_label) +
+        theme(
+          axis.title.x = element_text(size = 15, color = font_color, margin = margin(t = 10)),
+          axis.title.y = element_text(size = 15, color = font_color, margin = margin(r = 10)),
+          legend.title = element_text(size = 15, color = font_color),
+          legend.text = element_text(size = 13, color = font_color)
+        ) +
+        scale_color_manual(values = reactive_color_palette()) +
+        scale_y_continuous(breaks = get_breaks("value", combined_data),
+                           labels = scales::label_comma(accuracy = 0.1))
+      
+      # Add color aesthetic for day type if "sqft_per_person" is selected
+      if (variable == "sqft_per_person") {
+        p <- p + aes(color = day_type) + labs(color = "Day Type")
+      }
+      
+      p
     })
     
     # For Components Plot
