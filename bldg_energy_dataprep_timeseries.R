@@ -215,7 +215,7 @@ for (bldg in seq_along(buildings)) {
   current_hvac <- start_hvac[bldg]
   for (date_idx in 1:length(dates)) {
     # Apply a yearly decline to simulate aging
-    yearly_decline <- -.02 # add a very small daily negative constant to simulate long-term degradation
+    yearly_decline <- -.0001 # add a very small daily negative constant to simulate long-term degradation
     # Simulate daily variation
     daily_change <- sample(c(-.20, 0, .20), 1, prob = c(0.045, 0.96, 0.005)) # Mostly no daily change, slightly better chance of small bad change
     # Random events: significant increase or decrease
@@ -383,7 +383,7 @@ for (bldg in seq_along(buildings)) {
   current_efficiency <- start_efficiency[bldg]
   for (date_idx in 1:length(dates)) {
     # Apply a yearly decline to simulate aging
-    yearly_decline <- (as.integer(-.01)) # add a very small daily negative constant to simulate long-term degradation
+    yearly_decline <- -.01 # add a very small daily negative constant to simulate long-term degradation
     # Simulate daily variation
     daily_change <- sample(c(-.5, 0, .5), 1, prob = c(0.1, 0.8, 0.1)) # Mostly no change, equal chance of small good/bad change
     # Random events: significant increase or decrease

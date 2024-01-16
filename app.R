@@ -577,7 +577,6 @@ scenario_inputs <- list(
   ),
   sliderInput("useradjust_energyprices", label = NULL,
               min = -100, max = 100, value = 0, post = "%"),
-  uiOutput("forecast_day_type_selector"),
   actionButton("scenario_reset", "Reset"),
   actionButton("run_scenario", "Run Scenario")
 )
@@ -636,6 +635,11 @@ ui <- page_navbar(
     .plot-card-container #scenario_plotdiv {
       padding-top: 0 !important; /* Force no top padding */
       margin-top: 0 !important; /* Force no top margin */
+    }
+  ")),
+  tags$style(HTML("
+    .parameterdetails-container {
+      padding-bottom: 0 !important; /* Remove bottom padding */
     }
   ")),
   # IDs to connect IntroJS tour to navpanels
@@ -795,12 +799,16 @@ ui <- page_navbar(
         ),
         nav_panel(
           title = "Parameter Details",
-          selectInput("selected_variable", "Variable", 
+          div(class = "parameterdetails-container",
+          layout_columns(col_widths = c(4, 4, 4),
+            selectInput("selected_variable", "Variable", 
                       choices = c("Square Feet Per Person" = "sqft_per_person", 
                                   "Equipment Efficiency" = "equip_efficiency", 
                                   "HVAC Efficiency" = "hvac_efficiency", 
                                   "Price ($/KWh)" = "price_per_kwh", 
                                   "Daily Cost ($)" = "daily_cost")),
+                      uiOutput("forecast_day_type_selector"))
+          ),
           hidden(
             div(id = 'scenario_detailsdiv',
                 card(withSpinner(plotOutput("scenario_details_plot"), id = "details_spinner"), width=12, fill = T, full_screen = T)))
@@ -1433,16 +1441,16 @@ server <- function(input, output, session) {
         mutate(ds = with_tz(ds, tzone = "UTC")) %>%  # match time zones to avoid error messages
         filter(ds >= forecast_window_start & ds <= forecast_window_end)
       # Determine weekdays and weekends
-      base_future_full_plot <- base_future_full_plot %>%
-        mutate(day_type = ifelse(wday(ds, week_start = 1) %in% c(6, 7), "weekends", "weekdays")) # 0 for weekend, 1 for weekday, with Mon being the first day of the week
+      # base_future_full_plot <- base_future_full_plot %>%
+      #   mutate(day_type = ifelse(wday(ds, week_start = 1) %in% c(6, 7), "weekends", "weekdays")) # 0 for weekend, 1 for weekday, with Mon being the first day of the week
 
       print(head(base_future_full_plot$day_type))
       
       future_full_plot <- future_full %>%
         filter(ds >= forecast_window_start & ds <= forecast_window_end)
       
-      future_full_plot <- future_full_plot %>%
-        mutate(day_type = ifelse(wday(ds, week_start = 1) %in% c(6, 7), "weekends", "weekdays")) # 0 for weekend, 1 for weekday, with Mon being the first day of the week
+      # future_full_plot <- future_full_plot %>%
+      #   mutate(day_type = ifelse(wday(ds, week_start = 1) %in% c(6, 7), "weekends", "weekdays")) # 0 for weekend, 1 for weekday, with Mon being the first day of the week
       
       print(head(future_full_plot$day_type))
       
@@ -1466,15 +1474,18 @@ server <- function(input, output, session) {
                    day_type = ifelse(wday(baseline_data$ds, week_start = 1) %in% c(6, 7), "weekends", "weekdays"))
       )
       
-      # Filter based on the selected day type if variable is sqft_per_person
-      if (variable == "sqft_per_person" && input$forecast_day_type != "all") {
-        selected_day_type <- ifelse(input$forecast_day_type == "weekdays", "Weekdays", "Weekends")
+      # Filter based on the selected day type if variable is sqft_per_person or daily cost
+      if ((variable == "sqft_per_person" || variable == "daily_cost") && input$forecast_day_type != "all") {
+        selected_day_type <- ifelse(input$forecast_day_type == "weekdays", "weekdays", "weekends")
         combined_data <- combined_data %>% filter(day_type == selected_day_type)
       }
+      
+      print(unique(combined_data$day_type))
+      print(head(combined_data))
 
       font_color <- if (isTRUE(input$theme_toggle)) "black" else "white"
 
-      p <- ggplot(combined_data, aes(x = ds, y = value, group = Group)) +
+      p <- ggplot(combined_data, aes(x = ds, y = value, group = Group, color = Group)) +
         geom_line() +
         labs(x = "Date", y = pretty_label) +
         theme(
@@ -1486,11 +1497,6 @@ server <- function(input, output, session) {
         scale_color_manual(values = reactive_color_palette()) +
         scale_y_continuous(breaks = get_breaks("value", combined_data),
                            labels = scales::label_comma(accuracy = 0.1))
-      
-      # Add color aesthetic for day type if "sqft_per_person" is selected
-      if (variable == "sqft_per_person") {
-        p <- p + aes(color = day_type) + labs(color = "Day Type")
-      }
       
       p
     })
