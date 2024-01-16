@@ -391,8 +391,8 @@ pretty_variable_names <- c(
   "cloud_cover" = "Cloud Cover (%)", 
   "equip_efficiency" = "Equipment Efficiency Rating", 
   "hvac_efficiency" = "HVAC Efficiency Rating", 
-  "total" = "Total Energy Use (KWh)",
-  "price_per_kwh" = "Price ($/KWh)",
+  "total" = "Total Energy Use (kWh)",
+  "price_per_kwh" = "Price ($/kWh)",
   "daily_cost" = "Daily Cost ($)"
 )
 
@@ -512,7 +512,7 @@ eda_inputs <- list(
                           "Equipment Efficiency Rating" = "equip_efficiency",
                           "HVAC Efficiency Rating" = "hvac_efficiency",
                           "Building Size (Sq Ft)" = "bldg_area",
-                          "Total Energy Use (KWh)" = "total")),
+                          "Total Energy Use (kWh)" = "total")),
   sliderInput("time_period", "Time Period",
               min = min(df$date),
               max = max(df$date),
@@ -572,7 +572,7 @@ scenario_inputs <- list(
   tags$div(
     HTML('
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0px;">
-                <label for="useradjust_energyprices" style="margin-right: 3px;">Percent Adjustment: Price ($/KWh)</label>
+                <label for="useradjust_energyprices" style="margin-right: 3px;">Percent Adjustment: Price ($/kWh)</label>
                 <span id="scenario_useradj_energyprices" class="help-icon" style="cursor: pointer;">?</span>
             </div>')
   ),
@@ -806,7 +806,7 @@ ui <- page_navbar(
                       choices = c("Square Feet Per Person" = "sqft_per_person", 
                                   "Equipment Efficiency" = "equip_efficiency", 
                                   "HVAC Efficiency" = "hvac_efficiency", 
-                                  "Price ($/KWh)" = "price_per_kwh", 
+                                  "Price ($/kWh)" = "price_per_kwh", 
                                   "Daily Cost ($)" = "daily_cost")),
                       uiOutput("forecast_day_type_selector"))
           ),
@@ -903,7 +903,7 @@ server <- function(input, output, session) {
       element = "#energy-predictions-tab",
       intro = HTML("<style>em { margin-right: 2px; }</style>
                    The Scenario Planning section has three tabs: Energy Predictions, Parameter Details, and Model Accuracy.<br><br>The Energy Predictions tab lets you run energy use predictions based on custom scenarios where you control the building characteristics.
-      <br><br>In addition to choosing a building and timeframe, you can control four other characteristics that affect energy use: <strong><em>Square Feet Per Person,</em></strong> <strong><em>Equipment Efficiency,</em></strong> <strong><em>HVAC System Efficiency,</em></strong> and <strong><em>Price per KWh.</em></strong>
+      <br><br>In addition to choosing a building and timeframe, you can control four other characteristics that affect energy use: <strong><em>Square Feet Per Person,</em></strong> <strong><em>Equipment Efficiency,</em></strong> <strong><em>HVAC System Efficiency,</em></strong> and <strong><em>Price per kWh.</em></strong>
       <br><br>Click on the ? icon next to any of the characteristics in the sidebar to learn how the forecast model is taking your adjustments into account.")
     ),
     list(
@@ -1358,7 +1358,7 @@ server <- function(input, output, session) {
     
     output$energy_totals <- renderText({
       total_energy_use <- comma(round(sum(filtered_scenario$yhat),1))
-      text <- paste(total_energy_use, " KWh")
+      text <- paste(total_energy_use, " kWh")
       return(text)
     })
     
