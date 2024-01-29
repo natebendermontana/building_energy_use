@@ -24,7 +24,11 @@ library(shinyWidgets)
 #### Setup ####
 set.seed(12923)
 #setwd("/Users/natebender/Desktop/repo/building_energy_use/")
-df <- read.csv("data/df_timeseries_orig.csv")
+
+df1 <- read.csv("data/df_timeseries_orig.csv")
+df2 <- read.csv("data/df_timeseries_ongoing.csv")
+df <- bind_rows(df1, df2)
+
 df <- df %>%
   mutate(
     bldg_name = as.factor(bldg_name),
@@ -34,6 +38,7 @@ df <- df %>%
     day = factor(day, levels = c("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"), ordered = TRUE)  # Abbreviated day names
   )
 
+historical_max_date <- as.POSIXct(max(df$date), tz = "UTC")
 forecast_static_min <- max(df$date)+1 # possible predictions start at latest historical day +1
 potential_forecast_window <- 365*3 # can forecast up to three years beyond the day after the latest historical date
 potential_forecast_window_end <- forecast_static_min + potential_forecast_window
@@ -1346,6 +1351,15 @@ server <- function(input, output, session) {
     }
     set.seed(12923)
     base_prices_df <- generate_energyprices(df, total_dates, potential_total_length, useradjust_energyprices = 0) # generate full simulations in order to filter as needed later
+    # df_hist_prices <- df %>%
+    #   select(date, price_per_kwh) %>%
+    #   rename(ds = date) # rename to match the generated date col name "ds"
+    # base_prices_df <- rbind(df_hist_prices, base_prices_df)
+    # 
+    print("base prices df")
+    print(min(base_prices_df$ds))
+    print(max(base_prices_df$ds))
+    
     
     base_filtered_prices <- base_prices_df %>%
       mutate(ds = with_tz(ds, tzone = "UTC")) %>%  # match time zones to avoid error messages
@@ -1440,20 +1454,10 @@ server <- function(input, output, session) {
       base_future_full_plot <- base_future_full %>%
         mutate(ds = with_tz(ds, tzone = "UTC")) %>%  # match time zones to avoid error messages
         filter(ds >= forecast_window_start & ds <= forecast_window_end)
-      # Determine weekdays and weekends
-      # base_future_full_plot <- base_future_full_plot %>%
-      #   mutate(day_type = ifelse(wday(ds, week_start = 1) %in% c(6, 7), "weekends", "weekdays")) # 0 for weekend, 1 for weekday, with Mon being the first day of the week
 
-      print(head(base_future_full_plot$day_type))
-      
       future_full_plot <- future_full %>%
         filter(ds >= forecast_window_start & ds <= forecast_window_end)
-      
-      # future_full_plot <- future_full_plot %>%
-      #   mutate(day_type = ifelse(wday(ds, week_start = 1) %in% c(6, 7), "weekends", "weekdays")) # 0 for weekend, 1 for weekday, with Mon being the first day of the week
-      
-      print(head(future_full_plot$day_type))
-      
+
       # Prepare data for the selected variable
       if (variable == "price_per_kwh") {
         scenario_data <- filtered_prices %>% select(ds, price_per_kwh)
@@ -1479,14 +1483,14 @@ server <- function(input, output, session) {
         selected_day_type <- ifelse(input$forecast_day_type == "weekdays", "weekdays", "weekends")
         combined_data <- combined_data %>% filter(day_type == selected_day_type)
       }
-      
-      print(unique(combined_data$day_type))
-      print(head(combined_data))
 
       font_color <- if (isTRUE(input$theme_toggle)) "black" else "white"
 
+      vline_data <- data.frame(ds = historical_max_date, Group = "Historical data / predictions demarcation")
+      
       p <- ggplot(combined_data, aes(x = ds, y = value, group = Group, color = Group)) +
         geom_line() +
+        geom_vline(data = vline_data, aes(xintercept = ds, color = Group), linetype = "dashed", size = 1.2) +
         labs(x = "Date", y = pretty_label) +
         theme(
           axis.title.x = element_text(size = 15, color = font_color, margin = margin(t = 10)),
@@ -1494,7 +1498,10 @@ server <- function(input, output, session) {
           legend.title = element_text(size = 15, color = font_color),
           legend.text = element_text(size = 13, color = font_color)
         ) +
-        scale_color_manual(values = reactive_color_palette()) +
+        scale_color_manual(values = c(reactive_color_palette(), "grey"),
+                           name = "Legend",
+                           breaks = c(unique(combined_data$Group), "Historical data / predictions demarcation"),
+                           labels = c(unique(combined_data$Group), "Historical data / predictions demarcation")) +
         scale_y_continuous(breaks = get_breaks("value", combined_data),
                            labels = scales::label_comma(accuracy = 0.1))
       

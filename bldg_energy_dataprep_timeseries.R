@@ -9,13 +9,14 @@ library(reshape2)
 library(dplyr)
 library(Hmisc)
 
+
 # Set a seed for reproducibility
 set.seed(12923)
 
 #### SETUP, VARIABILITY & UNIQUENESS SETTINGS #####################
 # Time period
 start_date <- as.Date("2018-01-01")
-end_date <- as.Date("2023-12-13")
+end_date <- as.Date("2024-01-28")
 dates <- seq.Date(start_date, end_date, by = "day")
 days <- length(dates)
 
